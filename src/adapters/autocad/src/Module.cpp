@@ -59,7 +59,7 @@ acrxEntryPoint(AcRx::AppMsgCode msg, void* appId)
     {
     case AcRx::kInitAppMsg:
 
-        DuctLog(L"ARX initialization started: TestARX4 Designer UI with Project Information");
+        DuctLog(L"ARX initialization started: duct_system_designer");
 
         InitAdUiDLL();
         if (Fonts::LoadForModule(DuctModule.ModuleResourceInstance()))
