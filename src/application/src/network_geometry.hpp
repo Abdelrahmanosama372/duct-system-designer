@@ -2,6 +2,7 @@
 #include "application/duct_network.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace dsd::application::detail {
@@ -39,10 +40,6 @@ inline std::vector<Edge> edges(const std::vector<SourcePath>& paths) {
     }
     return result;
 }
-inline bool connected(const Edge& a, const Edge& b, double tolerance) {
-    return distance(a.a, b.a) <= tolerance || distance(a.a, b.b) <= tolerance ||
-           distance(a.b, b.a) <= tolerance || distance(a.b, b.b) <= tolerance;
-}
 inline std::optional<double> projection(const Point& p, const Edge& edge, double tolerance) {
     const double dx = edge.b.x - edge.a.x, dy = edge.b.y - edge.a.y;
     const double length2 = dx * dx + dy * dy;
@@ -54,6 +51,49 @@ inline std::optional<double> projection(const Point& p, const Edge& edge, double
 }
 inline Point point_at(const Edge& edge, double t) {
     return {edge.a.x + t * (edge.b.x - edge.a.x), edge.a.y + t * (edge.b.y - edge.a.y)};
+}
+
+struct EdgeJunction {
+    double first_parameter;
+    double second_parameter;
+};
+
+// Parameters on both finite edges, including endpoint gaps within tolerance.
+// Parallel/collinear edges have no unique crossing; their endpoint connections
+// continue to be handled separately.
+inline std::optional<EdgeJunction> junction(const Edge& a, const Edge& b, double tolerance) {
+    const double first_length = distance(a.a, a.b), second_length = distance(b.a, b.b);
+    const double rx = (a.b.x - a.a.x) / first_length;
+    const double ry = (a.b.y - a.a.y) / first_length;
+    const double sx = (b.b.x - b.a.x) / second_length;
+    const double sy = (b.b.y - b.a.y) / second_length;
+    const double determinant = rx * sy - ry * sx;
+    if (std::abs(determinant) <= 16 * std::numeric_limits<double>::epsilon())
+        return std::nullopt;
+    const double dx = b.a.x - a.a.x, dy = b.a.y - a.a.y;
+    const double first_offset = (dx * sy - dy * sx) / determinant;
+    const double second_offset = (dx * ry - dy * rx) / determinant;
+    if (first_offset >= 0 && first_offset <= first_length && second_offset >= 0 &&
+        second_offset <= second_length)
+        return EdgeJunction{first_offset / first_length, second_offset / second_length};
+
+    // A near T-junction is measured by perpendicular endpoint distance, not
+    // distance along the branch's infinite extension (which depends on angle).
+    if (const auto u = projection(a.a, b, tolerance))
+        return EdgeJunction{0, *u};
+    if (const auto u = projection(a.b, b, tolerance))
+        return EdgeJunction{1, *u};
+    if (const auto t = projection(b.a, a, tolerance))
+        return EdgeJunction{*t, 0};
+    if (const auto t = projection(b.b, a, tolerance))
+        return EdgeJunction{*t, 1};
+    return std::nullopt;
+}
+
+inline bool connected(const Edge& a, const Edge& b, double tolerance) {
+    return distance(a.a, b.a) <= tolerance || distance(a.a, b.b) <= tolerance ||
+           distance(a.b, b.a) <= tolerance || distance(a.b, b.b) <= tolerance ||
+           junction(a, b, tolerance).has_value();
 }
 
 struct PointClusters {

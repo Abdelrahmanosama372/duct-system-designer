@@ -6,8 +6,8 @@ namespace dsd::application::test {
 namespace {
 TEST(NetworkProcessingTest, ProjectsAllSourceAndOutputGeometryToXYRegardlessOfZ) {
     const double ignored_z = std::numeric_limits<double>::quiet_NaN();
-    auto input = draft({path("A", {{0, 0, 100}, {2000, 0, 800}}),
-                        path("B", {{2000, 0, -900}, {3000, 0, 200}})});
+    auto input = draft(
+        {path("A", {{0, 0, 100}, {2000, 0, 800}}), path("B", {{2000, 0, -900}, {3000, 0, 200}})});
     input.root->vertices.front().z = ignored_z;
     input.lines.front().vertices.front().z = ignored_z;
     input.lines.back().vertices.back().z = ignored_z;
@@ -92,6 +92,40 @@ TEST(NetworkProcessingTest, LoopGeometryAppearsOncePerItemInTheRootedTree) {
         }
     }
 }
+TEST(NetworkProcessingTest, EquipmentAtACrossingProducesFourDuctsAndOneConnectedEquipmentItem) {
+    auto input = draft({path("A", {{0, 0, 100}, {2000, 0, 100}}),
+                        path("B", {{1000, -1000, 900}, {1000, 1000, 900}})});
+    input.damper_block_name = L"Damper";
+    const auto result =
+        DsdApplication{}.prepare_network(input, {block("VCD", L"Damper", {1000, 0})});
+    EXPECT_EQ(result.lines.size(), 2);
+    EXPECT_EQ(result.segmented_lines_infos.size(), 4);
+    EXPECT_EQ(result.segmented_lines_vis_rectangles.size(), 4);
+    ASSERT_EQ(result.damper_blocks_infos.size(), 1);
+    EXPECT_EQ(result.damper_blocks_vis_rectangles.size(), 1);
+    EXPECT_EQ(result.network_ids_tree.parents.size(), 5);
+    EXPECT_EQ(result.network_ids_tree.parents.at("VCD-001"), result.network_ids_tree.root_id);
+    for (const auto& segment : result.segmented_lines_infos)
+        EXPECT_TRUE(result.network_ids_tree.parents.contains(segment.id));
+}
+TEST(NetworkProcessingTest, DiscoversPolylineInteriorCrossingsAndKeepsALoopFreeIdTree) {
+    const auto result = DsdApplication{}.prepare_network(
+        draft({path("A", {{0, 0}, {3000, 0}}),
+               path("Polyline", {{1000, -1000}, {1000, 1000}, {2000, 1000}, {2000, -1000}})}),
+        {});
+    ASSERT_EQ(result.lines.size(), 2);
+    EXPECT_EQ(result.segmented_lines_infos.size(), 8);
+    EXPECT_EQ(result.segmented_lines_vis_rectangles.size(), 8);
+    ASSERT_EQ(result.network_ids_tree.parents.size(), 8);
+    for (const auto& [id, parent] : result.network_ids_tree.parents) {
+        std::set<std::string> ancestors{id};
+        auto current = parent;
+        while (current) {
+            ASSERT_TRUE(ancestors.insert(*current).second);
+            current = result.network_ids_tree.parents.at(*current);
+        }
+    }
+}
 TEST(NetworkProcessingTest, EquipmentIntersectionUsesInsertionPointAndItsAdjustableTolerance) {
     auto input = draft({path("A", {{0, 0}, {1000, 0}})});
     input.air_terminal_block_name = L"Terminal";
@@ -143,9 +177,9 @@ TEST(NetworkProcessingTest, NewRootRebuildsAllItemsUsingTheExistingEquipmentTemp
     EXPECT_EQ(result.air_terminals_blocks_vis_rectangles.size(), 1);
     EXPECT_EQ(result.damper_blocks_vis_rectangles.size(), 1);
     EXPECT_EQ(result.network_ids_tree.parents.size(), 5);
-    for (const auto& rectangles : {result.segmented_lines_vis_rectangles,
-                                   result.air_terminals_blocks_vis_rectangles,
-                                   result.damper_blocks_vis_rectangles})
+    for (const auto& rectangles :
+         {result.segmented_lines_vis_rectangles, result.air_terminals_blocks_vis_rectangles,
+          result.damper_blocks_vis_rectangles})
         for (const auto& rectangle : rectangles)
             for (const auto& corner : rectangle.corners)
                 EXPECT_GT(corner.y, 2900); // No rectangles remain at the previous root.
@@ -158,10 +192,8 @@ TEST(NetworkProcessingTest, NewEquipmentTemplateReplacesItsMatchesAndRebuildsSeg
         input.air_terminal_block_name = L"Terminal A";
         input.damper_block_name = L"Damper A";
         const std::vector<geometry::Block> blocks{
-            block("AT-A", L"Terminal A", {500, 0}),
-            block("AT-B", L"Terminal B", {1000, 0}),
-            block("VCD-A", L"Damper A", {2000, 0}),
-            block("VCD-B", L"Damper B", {2500, 0})};
+            block("AT-A", L"Terminal A", {500, 0}), block("AT-B", L"Terminal B", {1000, 0}),
+            block("VCD-A", L"Damper A", {2000, 0}), block("VCD-B", L"Damper B", {2500, 0})};
         const DsdApplication application;
         auto selected = application.prepare_network(input, blocks);
         const auto old_visualization = replace_terminal

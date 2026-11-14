@@ -8,26 +8,39 @@ namespace dsd::application {
 namespace {
 using namespace detail;
 
-std::vector<Edge> split_at_equipment(const std::vector<Edge>& edges,
-                                     const std::vector<Point>& locations, double tolerance) {
-    std::vector<Edge> pieces;
-    for (const auto& edge : edges) {
-        std::vector<double> cuts{0, 1};
+std::vector<Edge> split_edges(const std::vector<Edge>& edges, const std::vector<Point>& locations,
+                              double tolerance) {
+    std::vector<std::vector<double>> cuts(edges.size(), {0, 1});
+    const auto add_cut = [&](std::size_t index, double parameter) {
+        const auto point = point_at(edges[index], parameter);
+        // Snap cuts near existing endpoints instead of creating tiny extra ducts.
+        if (distance(point, edges[index].a) > tolerance &&
+            distance(point, edges[index].b) > tolerance)
+            cuts[index].push_back(parameter);
+    };
+    for (std::size_t i = 0; i < edges.size(); ++i) {
         for (const auto& location : locations) {
-            const auto parameter = projection(location, edge, tolerance);
-            if (!parameter)
-                continue;
-            const auto cut = point_at(edge, *parameter);
-            // Equipment near an existing endpoint must not create a tiny extra duct.
-            if (distance(cut, edge.a) > tolerance && distance(cut, edge.b) > tolerance)
-                cuts.push_back(*parameter);
+            if (const auto parameter = projection(location, edges[i], tolerance))
+                add_cut(i, *parameter);
         }
-        std::sort(cuts.begin(), cuts.end());
-        cuts.erase(std::unique(cuts.begin(), cuts.end(),
-                               [](double a, double b) { return std::abs(a - b) < epsilon; }),
-                   cuts.end());
-        for (std::size_t i = 1; i < cuts.size(); ++i)
-            pieces.push_back({point_at(edge, cuts[i - 1]), point_at(edge, cuts[i]), edge.source});
+        for (std::size_t j = 0; j < i; ++j) {
+            if (const auto crossing = junction(edges[i], edges[j], tolerance)) {
+                add_cut(i, crossing->first_parameter);
+                add_cut(j, crossing->second_parameter);
+            }
+        }
+    }
+    std::vector<Edge> pieces;
+    for (std::size_t index = 0; index < edges.size(); ++index) {
+        auto& parameters = cuts[index];
+        const auto& edge = edges[index];
+        std::sort(parameters.begin(), parameters.end());
+        parameters.erase(std::unique(parameters.begin(), parameters.end(),
+                                     [](double a, double b) { return std::abs(a - b) < epsilon; }),
+                         parameters.end());
+        for (std::size_t i = 1; i < parameters.size(); ++i)
+            pieces.push_back(
+                {point_at(edge, parameters[i - 1]), point_at(edge, parameters[i]), edge.source});
     }
     return pieces;
 }
@@ -136,7 +149,7 @@ std::vector<LineInfo> NetworkSegmentor::segment(
         if (line.has_curves)
             throw std::invalid_argument("Curved polylines are not supported");
     const auto pieces =
-        split_at_equipment(detail::edges(lines), split_points, options.connection_tolerance_mm);
+        split_edges(detail::edges(lines), split_points, options.connection_tolerance_mm);
     const auto connections =
         build_connections(pieces, split_points, options.connection_tolerance_mm);
     std::vector<bool> consumed(pieces.size());

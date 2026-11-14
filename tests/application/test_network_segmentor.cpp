@@ -31,6 +31,47 @@ TEST(NetworkSegmentorTest, DoesNotMergeThroughBranchJunctions) {
                                                    {}, {});
     EXPECT_EQ(result.size(), 3);
 }
+TEST(NetworkSegmentorTest, SplitsBothEdgesAtXYCrossingsRegardlessOfDirectionOrAngle) {
+    const double rise = 1000 * std::tan(4 * std::numbers::pi / 180);
+    const auto root = path("A", {{0, 0, 100}, {2000, 0, -100}});
+    const std::vector<SourcePath> crossings{
+        path("Vertical", {{1000, -1000, 500}, {1000, 1000, 500}}),
+        path("Reversed", {{1000, 1000}, {1000, -1000}}),
+        path("Diagonal", {{0, -1000}, {2000, 1000}}), path("Shallow", {{0, -rise}, {2000, rise}})};
+    for (const auto& crossing : crossings) {
+        SCOPED_TRACE(crossing.source_id);
+        const auto result = NetworkSegmentor{}.segment({root, crossing}, {}, {});
+        ASSERT_EQ(result.size(), 4);
+        expect_xy(result[0].raw_line.end, 1000, 0);
+        expect_xy(result[1].raw_line.start, 1000, 0);
+        expect_xy(result[2].raw_line.end, 1000, 0);
+        expect_xy(result[3].raw_line.start, 1000, 0);
+        EXPECT_EQ(result[0].sources.front().source_id, "A");
+        EXPECT_EQ(result[2].sources.front().source_id, crossing.source_id);
+    }
+}
+TEST(NetworkSegmentorTest, SplitsTheMainDuctAtTJunctionsIncludingEndpointGapsWithinTolerance) {
+    for (const double gap : {0.0, 4.0}) {
+        SCOPED_TRACE(gap);
+        const auto result = NetworkSegmentor{}.segment(
+            {path("A", {{0, 0}, {2000, 0}}), path("B", {{1000, gap}, {2000, 1000}})}, {}, {});
+        ASSERT_EQ(result.size(), 3);
+        expect_xy(result[0].raw_line.end, 1000, 0);
+        expect_xy(result[1].raw_line.start, 1000, 0);
+        expect_xy(result[2].raw_line.start, 1000, gap);
+    }
+}
+TEST(NetworkSegmentorTest, DoesNotSplitParallelEdgesOrFiniteEdgesWhoseExtensionsCross) {
+    const auto root = path("A", {{0, 0}, {2000, 0}});
+    for (const auto& separate : {path("Parallel", {{0, 50}, {2000, 50}}),
+                                 path("BeyondEnd", {{3000, -1000}, {3000, 1000}})}) {
+        SCOPED_TRACE(separate.source_id);
+        const auto result = NetworkSegmentor{}.segment({root, separate}, {}, {});
+        ASSERT_EQ(result.size(), 2);
+        expect_xy(result[0].raw_line.start, 0, 0);
+        expect_xy(result[0].raw_line.end, 2000, 0);
+    }
+}
 TEST(NetworkSegmentorTest, SplitsAtEquipmentInsertionPointsAndDoesNotDuplicateCuts) {
     const auto result = NetworkSegmentor{}.segment(
         {path("A", {{0, 0}, {2000, 0}})}, {{500, 3, 900}, {500, 3, 1000}, {1500, 0, 800}}, {});
@@ -50,6 +91,10 @@ TEST(NetworkSegmentorTest, RejectsFinalDuctsAtOrBelowOneHundredMillimetres) {
                  std::invalid_argument);
     EXPECT_THROW((void)NetworkSegmentor{}.segment({path("A", {{0, 0}, {1000, 0}})}, {{50, 0}}, {}),
                  std::invalid_argument);
+    EXPECT_THROW(
+        (void)NetworkSegmentor{}.segment(
+            {path("A", {{0, 0}, {1000, 0}}), path("B", {{50, -1000}, {50, 1000}})}, {}, {}),
+        std::invalid_argument);
 }
 TEST(NetworkSegmentorTest, ShortRawPolylineSectionsCanMergeIntoAValidDuct) {
     const auto result =
