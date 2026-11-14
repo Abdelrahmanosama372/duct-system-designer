@@ -7,9 +7,10 @@ class UiEdit : public CEdit
     void Placeholder(CDC& dc)
     {
         if(m_placeholder.IsEmpty() || GetWindowTextLength()!=0)return;
-        CRect rect;GetClientRect(&rect);auto old=dc.SelectObject(GetFont());
+        // Use the native edit formatting origin for both hint and entered text.
+        CRect rect;GetRect(&rect);auto old=dc.SelectObject(GetFont());
         dc.SetBkMode(TRANSPARENT);dc.SetTextColor(UiStyle::Colors(m_hWnd).muted);
-        dc.DrawText(m_placeholder,rect,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);dc.SelectObject(old);
+        dc.DrawText(m_placeholder,rect,DT_LEFT|DT_TOP|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);dc.SelectObject(old);
     }
 
     void Border(CDC& dc,bool excludeClient)
@@ -29,7 +30,19 @@ protected:
         CRect rect=params->rgrc[0];
         if(rect.Height()>UiStyle::Px(m_hWnd,24) && rect.Width()>UiStyle::Px(m_hWnd,24))
         {
-            rect.DeflateRect(UiStyle::Px(m_hWnd,11),UiStyle::Px(m_hWnd,6));params->rgrc[0]=rect;
+            rect.DeflateRect(UiStyle::Px(m_hWnd,11),UiStyle::Px(m_hWnd,6));
+            if(!(GetStyle()&ES_MULTILINE))
+            {
+                // A single-line Win32 edit paints at the top of its client area.
+                // Center that area on the font line rather than centering only the hint.
+                CClientDC dc(this);CFont* font=GetFont();
+                CFont* old=font?dc.SelectObject(font):nullptr;
+                TEXTMETRIC metrics{};dc.GetTextMetrics(&metrics);
+                if(old)dc.SelectObject(old);
+                const int lineHeight=min(rect.Height(),static_cast<int>(metrics.tmHeight));
+                rect.top+=(rect.Height()-lineHeight)/2;rect.bottom=rect.top+lineHeight;
+            }
+            params->rgrc[0]=rect;
         }
     }
     afx_msg void OnPaint(){Default();CClientDC dc(this);Placeholder(dc);}

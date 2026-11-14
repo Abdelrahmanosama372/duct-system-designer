@@ -5,6 +5,7 @@
 
 BEGIN_MESSAGE_MAP(ProjectInformationPage,ScrollPage)
     ON_WM_CREATE()
+    ON_WM_CTLCOLOR()
 END_MESSAGE_MAP()
 
 #ifndef DUCT_UI_NATIVE_TESTS

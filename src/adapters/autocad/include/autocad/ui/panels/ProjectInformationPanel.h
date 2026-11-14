@@ -17,8 +17,11 @@ class ProjectInformationPage : public ScrollPage
     void ApplyEditingState()
     {
         for(size_t i=0;i<ProjectInfo::Count;++i)
-            static_cast<CEdit*>(GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(i)))->SetReadOnly(
-                ProjectInfo::editing?FALSE:TRUE);
+        {
+            auto* edit=static_cast<CEdit*>(GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(i)));
+            edit->SetReadOnly(ProjectInfo::editing?FALSE:TRUE);
+            edit->Invalidate(FALSE);
+        }
         SetDlgItemText(PI_SAVE,ProjectInfo::editing?L"Save":L"Modify");
         if(!ProjectInfo::editing)
             SetDlgItemText(PI_NOTICE,L"Project information saved for this session. Click Modify to edit.");
@@ -28,6 +31,13 @@ class ProjectInformationPage : public ScrollPage
             SetDlgItemText(PI_NOTICE,L"Edit project information and click Save. All fields are optional.");
     }
 protected:
+    afx_msg HBRUSH OnCtlColor(CDC* dc,CWnd* window,UINT kind)
+    {
+        HBRUSH brush=ScrollPage::OnCtlColor(dc,window,kind);
+        if(window && window->GetDlgCtrlID()>=PI_FIELD_FIRST && window->GetDlgCtrlID()<=PI_FIELD_LAST)
+            dc->SetTextColor(ProjectInfo::editing?UiStyle::Colors(m_hWnd).bright:UiStyle::Colors(m_hWnd).muted);
+        return brush;
+    }
     int ExtraSectionGap(int gap) const override{return 12-gap;}
     void LayoutContent() override
     {

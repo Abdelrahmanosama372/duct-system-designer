@@ -476,6 +476,24 @@ public:
                     {
                         const bool readOnly=(page.GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(i))->GetStyle()&ES_READONLY)!=0;
                         if(readOnly==editing)++errors;
+                        CWnd* field=page.GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(i));
+                        CClientDC dc(field);
+                        page.SendMessage(readOnly?WM_CTLCOLORSTATIC:WM_CTLCOLOREDIT,
+                            reinterpret_cast<WPARAM>(dc.m_hDC),reinterpret_cast<LPARAM>(field->m_hWnd));
+                        if(dc.GetTextColor()!=(editing?UiStyle::Colors(page.m_hWnd).bright:UiStyle::Colors(page.m_hWnd).muted))++errors;
+                        if(i!=ProjectInfo::AdditionalInformation)
+                        {
+                            auto oldFont=dc.SelectObject(field->GetFont());TEXTMETRIC metrics{};dc.GetTextMetrics(&metrics);dc.SelectObject(oldFont);
+                            CRect client,window;field->GetClientRect(&client);field->GetWindowRect(&window);
+                            CPoint origin(0,0);field->ClientToScreen(&origin);
+                            CRect format;field->SendMessage(EM_GETRECT,0,reinterpret_cast<LPARAM>(&format));
+                            if(client.Height()!=metrics.tmHeight || abs((origin.y-window.top)*2+client.Height()-window.Height())>1)++errors;
+                            if(field->GetWindowTextLength()>0)
+                            {
+                                const LRESULT position=field->SendMessage(EM_POSFROMCHAR,0);
+                                if(static_cast<short>(HIWORD(position))!=format.top)++errors;
+                            }
+                        }
                     }
                 };
                 const auto registrationMatchesDraft=[&]()
@@ -521,6 +539,7 @@ public:
                 projectInfo.SendDlgItemMessage(PI_SAVE,BM_CLICK);Pump();
                 if(ProjectInfo::saved!=ProjectInfo::draft)++errors;
                 checkEditMode(projectInfo,false);
+                Capture(projectInfo,L"project-information-saved-text.png");
                 if(!registrationMatchesDraft())++errors;
                 projectInfo.SendDlgItemMessage(PI_FIELD_FIRST,WM_CHAR,L'X');Pump();
                 projectInfo.GetDlgItemText(PI_FIELD_FIRST,value);if(value!=L"Example field 1")++errors;
@@ -529,6 +548,7 @@ public:
                 projectInfo.SendDlgItemMessage(PI_SAVE,BM_CLICK);Pump();
                 checkEditMode(projectInfo,true);
                 projectInfo.SetDlgItemText(PI_FIELD_FIRST,L"Modified project");Pump();
+                Capture(projectInfo,L"project-information-editing-text.png");
                 if(ProjectInfo::Application().project_information()!=registeredBeforeModify)++errors;
                 projectInfo.SendDlgItemMessage(PI_SAVE,BM_CLICK);Pump();
                 checkEditMode(projectInfo,false);
@@ -567,7 +587,7 @@ public:
             }
             ProjectInfo::Reset();
             if(!ProjectInfo::editing || ProjectInfo::Application().project_information())++errors;
-            fwprintf(log,L"Project information: optional fields, application registration, Save/Modify read-only toggle, multiline notes, keyboard focus scrolling, hide/show and recreation retention, session reset. Errors: %d\n",errors);
+            fwprintf(log,L"Project information: optional fields, application registration, Save/Modify read-only and text-color toggle, centered native text, multiline notes, keyboard focus scrolling, hide/show and recreation retention, session reset. Errors: %d\n",errors);
             fflush(log);registration.DestroyWindow();registered.DestroyWindow();frame.DestroyWindow();
         }
         Fonts::Unload();
