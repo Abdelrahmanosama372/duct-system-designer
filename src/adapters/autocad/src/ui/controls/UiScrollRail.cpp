@@ -1,0 +1,14 @@
+#include "autocad/ui/controls/UiScrollRail.h"
+
+BEGIN_MESSAGE_MAP(UiScrollRail,CWnd)
+    ON_WM_PAINT()
+    ON_WM_ERASEBKGND()
+    ON_WM_LBUTTONDOWN()
+    ON_WM_LBUTTONUP()
+    ON_WM_MOUSEMOVE()
+    ON_WM_CAPTURECHANGED()
+    ON_WM_MOUSEWHEEL()
+    ON_MESSAGE(WM_MOUSELEAVE,OnMouseLeave)
+    ON_MESSAGE(WM_PRINT,OnPrint)
+    ON_MESSAGE(WM_PRINTCLIENT,OnPrint)
+END_MESSAGE_MAP()

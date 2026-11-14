@@ -1,0 +1,12 @@
+#pragma once
+#include "autocad/ui/platform/Mfc.h"
+#include "adui.h"
+#include "aduiMessage.h"
+#include "rxregsvc.h"
+#include "aced.h"
+#include "acutads.h"
+#include "rxmfcapi.h"
+#include "AcExtensionModule.h"
+#include "aduiDock.h"
+#include "aduiPalette.h"
+#include "aduiPaletteSet.h"
