@@ -1,4 +1,5 @@
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/PropertiesSession.h"
 
 namespace {
 std::vector<NetworkDraft> registeredNetworks;
@@ -8,7 +9,10 @@ int nextId = 1;
 std::vector<NetworkDraft>& NetworkSession::Drafts() { return registeredNetworks; }
 int& NetworkSession::NextId() { return nextId; }
 NetworkDraftSession& NetworkSession::Current() { return current; }
-void NetworkSession::ResetDraft() { current = NetworkDraftSession{}; }
+void NetworkSession::ResetDraft() {
+    current = NetworkDraftSession{};
+    PropertiesSession::Clear();
+}
 void NetworkSession::Reset() {
     registeredNetworks.clear();
     ResetDraft();

@@ -37,6 +37,7 @@ add_library(DuctSystemDesignerUi MODULE
     src/Module.cpp
     src/commands/UiCommands.cpp
     src/database/NetworkInteraction.cpp
+    src/database/VisualizationSelection.cpp
     src/ui/PalettePage.cpp
     src/ui/controls/UiButton.cpp
     src/ui/controls/UiComboBox.cpp
@@ -48,6 +49,7 @@ add_library(DuctSystemDesignerUi MODULE
     src/ui/layout/ScrollPage.cpp
     src/ui/layout/TabbedContent.cpp
     src/ui/model/NetworkSession.cpp
+    src/ui/model/PropertiesSession.cpp
     src/ui/model/NetworkActions.cpp
     src/ui/model/ApplicationSession.cpp
     src/ui/model/ProjectInformation.cpp
@@ -100,6 +102,7 @@ if(DUCT_UI_BUILD_CHECKS)
     src/ui/layout/ScrollPage.cpp
     src/ui/layout/TabbedContent.cpp
     src/ui/model/NetworkSession.cpp
+    src/ui/model/PropertiesSession.cpp
     src/ui/model/NetworkActions.cpp
     src/ui/model/ApplicationSession.cpp
     src/ui/model/ProjectInformation.cpp

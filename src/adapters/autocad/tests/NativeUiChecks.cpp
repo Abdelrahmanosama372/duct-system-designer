@@ -5,6 +5,7 @@
 #include <cstdio>
 #include "autocad/ui/panels/NetworkPanel.h"
 #include "autocad/ui/panels/PropertiesPanel.h"
+#include <stdexcept>
 #include "autocad/ui/panels/DrawingGenerationPanel.h"
 #include "autocad/ui/panels/ReportsPanel.h"
 #include "autocad/ui/panels/ProjectInformationPanel.h"
@@ -66,7 +67,7 @@ public:
             QaFrame frame;
             if(!frame.Create(nullptr,L"Network controls QA",WS_OVERLAPPEDWINDOW,CRect(0,0,700,900)))return FALSE;
             frame.SetWindowPos(nullptr,-30000,-30000,700,900,SWP_NOACTIVATE|SWP_NOZORDER|SWP_SHOWWINDOW);
-            ProbePage registration;RegisteredNetworksPage registered;SegmentPropertiesPage properties;ReportsContent reports;ProjectInformationPage projectInfo;
+            ProbePage registration;RegisteredNetworksPage registered;ReportsContent reports;ProjectInformationPage projectInfo;
             NetworkSession::Reset();
             if(!registration.CreatePage(&frame,100) || !registered.CreatePage(&frame,101))return FALSE;
             registration.MoveWindow(0,0,540,700);registration.ShowWindow(SW_SHOW);
@@ -221,104 +222,62 @@ public:
             }
             fwprintf(log,L"Native controls: 20 scroll/resize cycles, original label positions restored; dark scrollbar drag, track click, wheel and auto-hide; explicit card fixtures and search checked. Errors: %d\n",errors);
             registration.ShowWindow(SW_HIDE);registered.ShowWindow(SW_HIDE);
-            if(!properties.CreatePage(&frame,102))++errors;
-            else
             {
-                properties.MoveWindow(0,0,540,700);properties.ShowWindow(SW_SHOW);Pump();
-                properties.GetDlgItemText(PC_SEGMENT,value);if(value!=L"DUCT-014")++errors;
-                properties.GetDlgItemText(PC_NETWORK,value);if(value!=L"Supply Network 01")++errors;
-                properties.GetDlgItemText(PC_FLOW,value);if(value!=L"350")++errors;
-                properties.GetDlgItemText(PC_WIDTH,value);if(value!=L"400")++errors;
-                properties.GetDlgItemText(PC_HEIGHT,value);if(value!=L"250")++errors;
-                if(!(properties.GetDlgItem(PC_SEGMENT)->GetStyle()&ES_READONLY))++errors;
-                if(!(properties.GetDlgItem(PC_NETWORK)->GetStyle()&ES_READONLY))++errors;
-                CRect initial;properties.GetDlgItem(PC_SEGMENT_LABEL)->GetWindowRect(&initial);
-                for(int i=0;i<12;++i)
-                {
-                    properties.MoveWindow(0,0,i%2?540:460,i%2?700:340);
-                    properties.SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();
-                    properties.SendMessage(WM_VSCROLL,SB_TOP);Pump();
-                }
-                properties.MoveWindow(0,0,540,700);properties.SendMessage(WM_VSCROLL,SB_TOP);Pump();
-                CRect restored;properties.GetDlgItem(PC_SEGMENT_LABEL)->GetWindowRect(&restored);
-                if(initial!=restored)++errors;
-                properties.SetDlgItemText(PC_FLOW,L"invalid");properties.SendDlgItemMessage(PC_APPLY,BM_CLICK);Pump();
-                properties.GetDlgItemText(PC_STATUS,value);if(value.Find(L"valid non-negative")<0)++errors;
-                properties.SetDlgItemText(PC_FLOW,L"425.5");
-                auto* width=static_cast<CComboBox*>(properties.GetDlgItem(PC_WIDTH));
-                width->SetCurSel(width->FindStringExact(-1,L"500"));
-                properties.SendDlgItemMessage(PC_APPLY,BM_CLICK);Pump();
-                properties.GetDlgItemText(PC_STATUS,value);
-                if(value.Find(L"425.5 CFM | 500 x 250 mm")<0 || value.Find(L"Drawing unchanged")<0)++errors;
-                properties.SendDlgItemMessage(PC_PICK,BM_CLICK);Pump();
-                properties.GetDlgItemText(PC_SEGMENT,value);if(value!=L"DUCT-014")++errors;
-                properties.SetDlgItemText(PC_FLOW,L"350");width->SetCurSel(width->FindStringExact(-1,L"400"));
-                properties.SetDlgItemText(PC_STATUS,L"Sample properties for UI preview. Drawing selection and updates are not connected yet.");
-                properties.SendMessage(WM_VSCROLL,SB_TOP);Pump();Capture(properties,L"properties-preview.png");
-                properties.DestroyWindow();
-            }
-            fwprintf(log,L"Properties: sample fields, read-only identity, 12 resize/scroll cycles and preview-only actions. Errors: %d\n",errors);
-
-            {
+                using namespace dsd::application;
+                auto draft=DuctNetwork{};draft.id="NET-QA";draft.name=L"Properties QA";
+                draft.root=SourcePath{"QA",L"Ducts",{{0,0},{3000,0}}};draft.lines={*draft.root};
+                draft.air_terminal_block_name=L"Terminal";draft.damper_block_name=L"Damper";
+                const std::vector<dsd::geometry::Block> blocks{
+                    {"T",L"Terminal",{1000,0},{{980,-10},{1020,10}}},
+                    {"D",L"Damper",{2000,0},{{1980,-10},{2020,10}}}};
+                NetworkSession::Current().network=std::make_unique<DuctNetwork>(
+                    ProjectInfo::Application().prepare_network(draft,blocks));
                 PropertiesContent content;
                 if(!content.CreateView(&frame,106))++errors;
-                else
-                {
+                else {
                     content.MoveWindow(0,0,540,940);content.ShowWindow(SW_SHOW);Pump();
                     auto* tabs=static_cast<CTabCtrl*>(content.GetDlgItem(3701));
-                    auto switchProperty=[&](int index)
-                    {
-                        tabs->SetCurSel(index);NMHDR note={tabs->m_hWnd,3701,TCN_SELCHANGE};
-                        content.SendMessage(WM_NOTIFY,3701,reinterpret_cast<LPARAM>(&note));Pump();
-                        for(int i=0;i<3;++i)if(((content.GetDlgItem(3801+i)->GetStyle()&WS_VISIBLE)!=0)!=(i==index))++errors;
-                    };
-                    if(tabs->GetItemCount()!=3)++errors;
-                    if(!ScrollingHeader(content,3700))++errors;
-                    CWnd* terminal=content.GetDlgItem(3802);CWnd* damper=content.GetDlgItem(3803);
-                    switchProperty(1);
-                    for(auto pair:{std::pair<UINT,const wchar_t*>{EP_SELECTED,L"AT-003"},{EP_NETWORK,L"Supply Network 01"},
-                        {EP_FIRST,L"250"},{EP_SECOND,L"200 x 200"},{EP_THIRD,L"300 x 300"}})
-                    {terminal->GetDlgItemText(pair.first,value);if(value!=pair.second)++errors;}
-                    terminal->SetDlgItemText(EP_FIRST,L"bad");terminal->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
-                    terminal->GetDlgItemText(EP_STATUS,value);if(value.Find(L"valid non-negative")<0)++errors;
-                    terminal->SetDlgItemText(EP_FIRST,L"325.5");terminal->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
-                    terminal->GetDlgItemText(EP_STATUS,value);if(value.Find(L"325.5 CFM")<0 || value.Find(L"Drawing unchanged")<0)++errors;
-                    terminal->SetDlgItemText(EP_FIRST,L"250");Capture(content,L"properties-air-terminals.png");
-                    switchProperty(2);
-                    for(auto pair:{std::pair<UINT,const wchar_t*>{EP_SELECTED,L"VCD-003"},{EP_NETWORK,L"Supply Network 01"},
-                        {EP_FIRST,L"Volume Control Damper"},{EP_SECOND,L"Opposed Blade"},{EP_THIRD,L"400"},{EP_FOURTH,L"250"}})
-                    {damper->GetDlgItemText(pair.first,value);if(value!=pair.second)++errors;}
-                    for(UINT id:{EP_FIRST,EP_SECOND})
-                    {
-                        auto* combo=static_cast<CComboBox*>(damper->GetDlgItem(id));
-                        if((combo->GetStyle()&3)!=CBS_DROPDOWNLIST || combo->GetCount()<2)++errors;
-                        combo->SetCurSel(1);combo->GetWindowText(value);
-                        if(value!=(id==EP_FIRST?L"Fire Damper":L"Parallel Blade"))++errors;
-                        combo->SetCurSel(0);
-                    }
-                    for(UINT id:{EP_SELECTED,EP_NETWORK})if(!(damper->GetDlgItem(id)->GetStyle()&ES_READONLY))++errors;
-                    for(auto invalid:{L"0",L"-50",L"10.5",L"abc"})
-                    {
-                        damper->SetDlgItemText(EP_THIRD,invalid);damper->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
-                        damper->GetDlgItemText(EP_STATUS,value);if(value.Find(L"positive whole-number")<0)++errors;
-                    }
+                    CWnd* segment=content.GetDlgItem(3801);
+                    CWnd* terminal=content.GetDlgItem(3802);
+                    CWnd* damper=content.GetDlgItem(3803);
+                    if(segment->GetDlgItem(PC_APPLY)->IsWindowEnabled())++errors;
+                    PropertiesSession::Select({"NET-QA","DUCT-001",NetworkItemType::Segment});Pump();
+                    if(tabs->GetCurSel()!=0)++errors;
+                    segment->GetDlgItemText(PC_FLOW,value);if(value!=L"0")++errors;
+                    segment->GetDlgItemText(PC_WIDTH,value);if(value!=L"AC")++errors;
+                    segment->SetDlgItemText(PC_FLOW,L"350.5");segment->SendDlgItemMessage(PC_APPLY,BM_CLICK);Pump();
+                    if(NetworkSession::Current().network->segmented_lines_infos.front().metadata.at("flow")!="350.5")++errors;
+                    segment->SetDlgItemText(PC_FLOW,L"-1");segment->SendDlgItemMessage(PC_APPLY,BM_CLICK);Pump();
+                    if(NetworkSession::Current().network->segmented_lines_infos.front().metadata.at("flow")!="350.5")++errors;
+                    segment->SetDlgItemText(PC_FLOW,L"999");
+                    PropertiesSession::Select({"NET-QA","AT-001",NetworkItemType::AirTerminal});Pump();
+                    if(tabs->GetCurSel()!=1)++errors;
+                    terminal->GetDlgItemText(EP_SECOND,value);if(value!=L"none")++errors;
+                    terminal->SetDlgItemText(EP_FIRST,L"250");terminal->SetDlgItemText(EP_SECOND,L"200 x 150");
+                    terminal->SetDlgItemText(EP_THIRD,L"300 x 300");terminal->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
+                    const auto& terminalValues=NetworkSession::Current().network->air_terminal_blocks_infos.front().metadata;
+                    if(terminalValues.at("width")!="200" || terminalValues.at("height")!="150" || terminalValues.at("face_size")!="300 x 300")++errors;
+                    Capture(content,L"properties-air-terminals.png");
+                    PropertiesSession::Select({"NET-QA","VCD-001",NetworkItemType::Damper});Pump();
+                    if(tabs->GetCurSel()!=2)++errors;
+                    damper->GetDlgItemText(EP_THIRD,value);if(value!=L"AC")++errors;
+                    auto* types=static_cast<CComboBox*>(damper->GetDlgItem(EP_FIRST));types->SetCurSel(types->FindStringExact(-1,L"Fire Damper"));
                     damper->SetDlgItemText(EP_THIRD,L"500");damper->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
-                    damper->GetDlgItemText(EP_STATUS,value);if(value.Find(L"500 x 250 mm")<0 || value.Find(L"Drawing unchanged")<0)++errors;
-                    damper->SetDlgItemText(EP_THIRD,L"400");Capture(content,L"properties-dampers.png");
-                    for(int i=0;i<12;++i)
-                    {
-                        content.MoveWindow(0,0,i%2?540:460,i%2?700:340);switchProperty(i%3);
-                        content.GetDlgItem(3801+i%3)->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();
-                        content.GetDlgItem(3801+i%3)->SendMessage(WM_VSCROLL,SB_TOP);Pump();
-                    }
-                    switchProperty(1);terminal->GetDlgItemText(EP_FIRST,value);if(value!=L"250")++errors;
-                    switchProperty(2);damper->GetDlgItemText(EP_THIRD,value);if(value!=L"400")++errors;
-                    content.MoveWindow(0,0,540,940);switchProperty(0);Capture(content,L"properties-segments.png");
+                    const auto& damperValues=NetworkSession::Current().network->damper_blocks_infos.front().metadata;
+                    if(damperValues.at("width")!="500" || damperValues.at("damper_type")!="Fire Damper")++errors;
+                    Capture(content,L"properties-dampers.png");
+                    PropertiesSession::Select({"NET-QA","DUCT-001",NetworkItemType::Segment});Pump();
+                    segment->GetDlgItemText(PC_FLOW,value);if(value!=L"350.5")++errors;
+                    Capture(content,L"properties-preview.png");
+                    for(int i=0;i<12;++i){content.MoveWindow(0,0,i%2?540:460,i%2?740:340);segment->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();segment->SendMessage(WM_VSCROLL,SB_TOP);Pump();}
+                    const PropertiesSession::Selection stale{"NET-QA","DUCT-001",NetworkItemType::Segment};
+                    NetworkSession::ResetDraft();Pump();
+                    if(segment->GetDlgItem(PC_APPLY)->IsWindowEnabled())++errors;
+                    try{PropertiesSession::Apply(stale,{{"flow","123"}});++errors;}catch(const std::invalid_argument&){}
                     content.DestroyWindow();
                 }
-                fwprintf(log,L"Properties tabs: native notifications, sample defaults, validation, retained edits, 12 resize/scroll cycles. Errors: %d\n",errors);
+                fwprintf(log,L"Properties: actual metadata, automatic subtabs, Apply, invalid edits, discarded edits, reset, stale selection and resize/scroll checks. Errors: %d\n",errors);
             }
-
 
             {
                 DrawingGenerationContent content;

@@ -1,10 +1,12 @@
 #include "autocad/ui/platform/ObjectArx.h"
 #include "autocad/database/NetworkInteraction.h"
+#include "autocad/database/VisualizationSelection.h"
 #include "acdocman.h"
 #include "acstring.h"
 #include "autocad/ui/model/ApplicationSession.h"
 #include "autocad/ui/model/NetworkActions.h"
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/PropertiesSession.h"
 #include "dbapserv.h"
 #include "dbcolor.h"
 #include "dbdynblk.h"
@@ -375,10 +377,12 @@ bool request(NetworkActions::Action action, HWND window) {
 } // namespace
 
 void Autocad::Network::Initialize() {
+    Autocad::VisualizationSelection::Initialize();
     acDocManager->addReactor(&documentReactor);
     NetworkActions::SetHandler(request);
 }
 void Autocad::Network::Shutdown() {
+    Autocad::VisualizationSelection::Shutdown();
     NetworkActions::SetHandler(nullptr);
     acDocManager->removeReactor(&documentReactor);
     pending.reset();
@@ -454,6 +458,7 @@ void Autocad::Network::ExecutePendingAction() {
         if (!session.network)
             session.form.id = NetworkSession::NextId()++;
         session.network = std::move(prepared);
+        PropertiesSession::Clear();
         NetworkSession::UpdateForm(session.form);
         session.form.segmentCount.Format(L"%zu", session.network->segmented_lines_infos.size());
         session.form.totalFlow = L"0 CFM";
@@ -491,6 +496,31 @@ Autocad::Network::ResolveVisualization(AcDbObjectId id) {
     if (fields.size() != 4)
         return std::nullopt;
     return VisualizationIdentity{fields[0], fields[1], fields[2], fields[3]};
+}
+std::optional<Autocad::Network::VisualizationIdentity>
+Autocad::Network::ResolveCurrentVisualization(AcDbObjectId id) {
+    const auto* network = NetworkSession::Current().network.get();
+    auto* document = acDocManager->mdiActiveDocument();
+    if (!network || !document || id.isNull() || !id.isValid() || id.isErased() ||
+        id.database() != document->database() ||
+        network->document_key != document_key(*document->database(), document->database()->currentSpaceId()))
+        return std::nullopt;
+    const auto current = displayed.find(network->document_key + ":" + network->id);
+    if (current == displayed.end() ||
+        std::find(current->second.begin(), current->second.end(), id) == current->second.end())
+        return std::nullopt;
+    const auto identity = ResolveVisualization(id);
+    if (!identity || identity->network_id != wide(network->id)) return std::nullopt;
+    const auto matches = [&](const auto& rectangles) {
+        return std::any_of(rectangles.begin(), rectangles.end(), [&](const auto& rectangle) {
+            return wide(rectangle.id) == identity->visualization_id &&
+                   wide(rectangle.item_id) == identity->item_id;
+        });
+    };
+    const bool valid = identity->type == L"segment" ? matches(network->segmented_lines_vis_rectangles)
+                     : identity->type == L"air_terminal" ? matches(network->air_terminals_blocks_vis_rectangles)
+                     : identity->type == L"damper" && matches(network->damper_blocks_vis_rectangles);
+    return valid ? identity : std::nullopt;
 }
 void Autocad::Network::IdentifyVisualization() {
     try {

@@ -12,4 +12,6 @@ void Shutdown();
 void ExecutePendingAction();
 void IdentifyVisualization();
 std::optional<VisualizationIdentity> ResolveVisualization(AcDbObjectId entity);
+// Only entities belonging to the currently owned draft may be edited.
+std::optional<VisualizationIdentity> ResolveCurrentVisualization(AcDbObjectId entity);
 } // namespace Autocad::Network
