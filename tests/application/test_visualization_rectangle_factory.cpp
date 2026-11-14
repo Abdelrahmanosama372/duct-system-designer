@@ -2,14 +2,14 @@
 
 namespace dsd::application::test {
 namespace {
-TEST(VisualizationRectangleFactoryTest, SegmentPreviewIsOneHundredWideAndInsetFiftyAtBothEnds) {
+TEST(VisualizationRectangleFactoryTest, SegmentPreviewUsesTwoHundredWidthAndTwoHundredFiftyEndInsets) {
     const LineInfo segment{
         "DUCT-001", geometry::Line{{0, 0, 20}, {1000, 0, 900}}, {{"flow", "0"}}, {{"A", 0}}};
     const auto result = VisualizationRectangleFactory{}.create_for_segment("NET-001", segment, {});
-    expect_xy(result.corners[0], 50, 50);
-    expect_xy(result.corners[1], 950, 50);
-    expect_xy(result.corners[2], 950, -50);
-    expect_xy(result.corners[3], 50, -50);
+    expect_xy(result.corners[0], 250, 100);
+    expect_xy(result.corners[1], 750, 100);
+    expect_xy(result.corners[2], 750, -100);
+    expect_xy(result.corners[3], 250, -100);
     EXPECT_EQ(result.id, "NET-001:VIS:DUCT-001");
     EXPECT_EQ(result.item_id, "DUCT-001");
     EXPECT_EQ(result.metadata, segment.metadata);
@@ -17,10 +17,10 @@ TEST(VisualizationRectangleFactoryTest, SegmentPreviewIsOneHundredWideAndInsetFi
 TEST(VisualizationRectangleFactoryTest, SegmentPreviewFollowsItsLineDirectionInXY) {
     const LineInfo segment{"DUCT-001", geometry::Line{{0, 0}, {0, 1000}}, {}, {{"A", 0}}};
     const auto result = VisualizationRectangleFactory{}.create_for_segment("NET-001", segment, {});
-    expect_xy(result.corners[0], -50, 50);
-    expect_xy(result.corners[1], -50, 950);
-    expect_xy(result.corners[2], 50, 950);
-    expect_xy(result.corners[3], 50, 50);
+    expect_xy(result.corners[0], -100, 250);
+    expect_xy(result.corners[1], -100, 750);
+    expect_xy(result.corners[2], 100, 750);
+    expect_xy(result.corners[3], 100, 250);
 }
 TEST(VisualizationRectangleFactoryTest, EquipmentPreviewOffsetsBoundingRectangleByFifty) {
     const BlockInfo info{"AT-001", block("B", L"Terminal", {0, 0, 800}), {{"width", "none"}}};

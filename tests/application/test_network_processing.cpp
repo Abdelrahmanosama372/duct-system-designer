@@ -42,12 +42,12 @@ TEST(NetworkProcessingTest, ProjectsAllSourceAndOutputGeometryToXYRegardlessOfZ)
 
 TEST(NetworkProcessingTest,
      ProducesEquipmentDefaultsSegmentRectanglesAndAnIdTreeWithoutOwningTheDraft) {
-    auto input = draft({path("A", {{0, 0}, {2000, 0}})});
+    auto input = draft({path("A", {{0, 0}, {4000, 0}})});
     input.air_terminal_block_name = L"Terminal";
     input.damper_block_name = L"Damper";
     const auto result = DsdApplication{}.prepare_network(
         input,
-        {block("AT", L"Terminal", {500, 0}), block("VCD", L"Damper", {1500, 0}),
+        {block("AT", L"Terminal", {1000, 0}), block("VCD", L"Damper", {3000, 0}),
          block("Unmatched", L"Other", {1000, 0}), block("OffLine", L"Terminal", {1000, 1000})});
     EXPECT_TRUE(input.segmented_lines_infos.empty());
     ASSERT_EQ(result.segmented_lines_infos.size(), 3);
@@ -127,9 +127,9 @@ TEST(NetworkProcessingTest, DiscoversPolylineInteriorCrossingsAndKeepsALoopFreeI
     }
 }
 TEST(NetworkProcessingTest, EquipmentIntersectionUsesInsertionPointAndItsAdjustableTolerance) {
-    auto input = draft({path("A", {{0, 0}, {1000, 0}})});
+    auto input = draft({path("A", {{0, 0}, {2000, 0}})});
     input.air_terminal_block_name = L"Terminal";
-    const auto near = block("B", L"Terminal", {500, 4});
+    const auto near = block("B", L"Terminal", {1000, 4});
     EXPECT_EQ(DsdApplication{}.prepare_network(input, {near}).air_terminal_blocks_infos.size(), 1);
     input.options.connection_tolerance_mm = 3;
     EXPECT_TRUE(DsdApplication{}.prepare_network(input, {near}).air_terminal_blocks_infos.empty());
@@ -148,11 +148,11 @@ TEST(NetworkProcessingTest, KeepsEquipmentMetadataAndIdsWhenRediscoveringTheSame
 }
 
 TEST(NetworkProcessingTest, NewRootRebuildsAllItemsUsingTheExistingEquipmentTemplates) {
-    const auto first_root = path("A", {{0, 0}, {2000, 0}});
-    const auto second_root = path("B", {{0, 3000}, {2000, 3000}});
+    const auto first_root = path("A", {{0, 0}, {4000, 0}});
+    const auto second_root = path("B", {{0, 3000}, {4000, 3000}});
     const std::vector<geometry::Block> blocks{
-        block("AT-A", L"Terminal", {500, 0}), block("VCD-A", L"Damper", {1500, 0}),
-        block("AT-B", L"Terminal", {500, 3000}), block("VCD-B", L"Damper", {1500, 3000})};
+        block("AT-A", L"Terminal", {1000, 0}), block("VCD-A", L"Damper", {3000, 0}),
+        block("AT-B", L"Terminal", {1000, 3000}), block("VCD-B", L"Damper", {3000, 3000})};
     auto input = draft({first_root, second_root});
     input.air_terminal_block_name = L"Terminal";
     input.damper_block_name = L"Damper";
@@ -182,18 +182,18 @@ TEST(NetworkProcessingTest, NewRootRebuildsAllItemsUsingTheExistingEquipmentTemp
           result.damper_blocks_vis_rectangles})
         for (const auto& rectangle : rectangles)
             for (const auto& corner : rectangle.corners)
-                EXPECT_GT(corner.y, 2900); // No rectangles remain at the previous root.
+                EXPECT_GE(corner.y, 2900); // No rectangles remain at the previous root.
 }
 
 TEST(NetworkProcessingTest, NewEquipmentTemplateReplacesItsMatchesAndRebuildsSegmentation) {
     for (const bool replace_terminal : {true, false}) {
         SCOPED_TRACE(replace_terminal ? "terminal" : "damper");
-        auto input = draft({path("A", {{0, 0}, {3000, 0}})});
+        auto input = draft({path("A", {{0, 0}, {6000, 0}})});
         input.air_terminal_block_name = L"Terminal A";
         input.damper_block_name = L"Damper A";
         const std::vector<geometry::Block> blocks{
-            block("AT-A", L"Terminal A", {500, 0}), block("AT-B", L"Terminal B", {1000, 0}),
-            block("VCD-A", L"Damper A", {2000, 0}), block("VCD-B", L"Damper B", {2500, 0})};
+            block("AT-A", L"Terminal A", {1000, 0}), block("AT-B", L"Terminal B", {2000, 0}),
+            block("VCD-A", L"Damper A", {4000, 0}), block("VCD-B", L"Damper B", {5000, 0})};
         const DsdApplication application;
         auto selected = application.prepare_network(input, blocks);
         const auto old_visualization = replace_terminal
@@ -215,9 +215,9 @@ TEST(NetworkProcessingTest, NewEquipmentTemplateReplacesItsMatchesAndRebuildsSeg
                   replace_terminal ? "VCD-A" : "VCD-B");
         ASSERT_EQ(result.segmented_lines_infos.size(), 3);
         EXPECT_DOUBLE_EQ(result.segmented_lines_infos[0].raw_line.end.x,
-                         replace_terminal ? 1000 : 500);
+                         replace_terminal ? 2000 : 1000);
         EXPECT_DOUBLE_EQ(result.segmented_lines_infos[1].raw_line.end.x,
-                         replace_terminal ? 2000 : 2500);
+                         replace_terminal ? 4000 : 5000);
         EXPECT_EQ(result.segmented_lines_vis_rectangles.size(), 3);
         ASSERT_EQ(result.air_terminals_blocks_vis_rectangles.size(), 1);
         ASSERT_EQ(result.damper_blocks_vis_rectangles.size(), 1);

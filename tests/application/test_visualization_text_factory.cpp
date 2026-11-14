@@ -49,8 +49,8 @@ TEST(VisualizationTextFactoryTest, SegmentTextIsCenteredAboveItsRectangleAndFoll
         const auto texts = VisualizationTextFactory{}.create(network, {true, false, false});
         ASSERT_EQ(texts.size(), 1);
         const auto& text = texts.front();
-        expect_xy(text.bottom_center, dx / 2 - 100 * std::sin(angle),
-                  dy / 2 + 100 * std::cos(angle));
+        expect_xy(text.bottom_center, dx / 2 - 150 * std::sin(angle),
+                  dy / 2 + 150 * std::cos(angle));
         EXPECT_NEAR(text.rotation, angle, 1e-7);
         EXPECT_EQ(text.height_mm, 35);
         EXPECT_EQ(text.id, "NET-001:TEXT:DUCT-001");
@@ -91,7 +91,7 @@ TEST(VisualizationTextFactoryTest, TextHeightAndClearanceAreAdjustableInNetworkO
     network.options.visualization_text_offset_mm = 80;
     const auto texts = VisualizationTextFactory{}.create(network, {false, false, true});
     ASSERT_EQ(texts.size(), 2);
-    expect_xy(texts[0].bottom_center, 1000, 130);
+    expect_xy(texts[0].bottom_center, 1000, 180);
     expect_xy(texts[1].bottom_center, 2000, 140);
     EXPECT_EQ(texts[0].height_mm, 60);
     EXPECT_EQ(texts[1].height_mm, 60);
