@@ -1,4 +1,5 @@
 #include "autocad/ui/PalettePage.h"
+#include "autocad/ui/model/NetworkSession.h"
 void PalettePage::LayoutView()
 {
     if(!ready_)return;
@@ -19,7 +20,14 @@ BOOL PalettePage::GetMinimumSize(CSize& size)
     const int dpi=m_hWnd?GetDpiForWindow(m_hWnd):96;
     size=CSize(MulDiv(460,dpi?dpi:96,96),MulDiv(300,dpi?dpi:96,96));return TRUE;
 }
-bool PalettePage::CanFrameworkTakeFocus(){HWND focus=::GetFocus();return !(focus==m_hWnd || ::IsChild(m_hWnd,focus));}
+bool PalettePage::CanFrameworkTakeFocus()
+{
+    // A queued drawing action must be able to take focus from its Pick button.
+    // The existing busy lifecycle ends on success, cancellation, startup failure,
+    // document closure, and unload; normal form focus protection then resumes.
+    if(NetworkSession::Current().busy)return true;
+    HWND focus=::GetFocus();return !(focus==m_hWnd || ::IsChild(m_hWnd,focus));
+}
 BOOL PalettePage::PreTranslateMessage(MSG* message)
 {
     if(ContentWindow().PreTranslateMessage(message))return TRUE;
