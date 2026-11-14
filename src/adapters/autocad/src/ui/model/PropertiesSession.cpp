@@ -1,5 +1,6 @@
 #include "autocad/ui/model/PropertiesSession.h"
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/NetworkActions.h"
 #include <stdexcept>
 
 namespace {
@@ -46,5 +47,6 @@ void PropertiesSession::Apply(const Selection& expected,
     dsd::application::update_network_item_metadata(*session.network, target.type, target.item_id,
                                                    changes);
     NetworkSession::InvalidateAnalysis();
+    NetworkActions::RefreshLabels();
     notify();
 }

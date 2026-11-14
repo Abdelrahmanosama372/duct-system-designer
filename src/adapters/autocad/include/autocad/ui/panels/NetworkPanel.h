@@ -249,6 +249,11 @@ protected:
             code==CBN_EDITCHANGE || (code==BN_CLICKED && id>=NC_SEGMENTS && id<=NC_DIMENSIONS)))
         {
             NetworkSession::UpdateForm(Read());
+            if(code==BN_CLICKED && id>=NC_SEGMENTS && id<=NC_DIMENSIONS &&
+               NetworkSession::Current().network && !NetworkSession::Current().busy) {
+                if(id==NC_SEGMENTS)NetworkActions::Request(NetworkActions::Action::Refresh,m_hWnd);
+                else NetworkActions::RefreshLabels(m_hWnd);
+            }
             UpdateSelectionState();Status(NetworkSession::Current().message);
         }
         return ScrollPage::OnCommand(wp,lp);

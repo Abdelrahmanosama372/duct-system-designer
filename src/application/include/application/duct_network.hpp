@@ -48,6 +48,22 @@ struct VisualizationRectangle {
     Metadata metadata;
 };
 
+struct VisualizationTextFields {
+    bool flow = false;
+    bool dimensions = false;
+    bool bod = false;
+};
+
+struct VisualizationText {
+    std::string id;
+    std::string item_id;
+    NetworkItemType type;
+    geometry::Point bottom_center;
+    double rotation;
+    double height_mm;
+    std::vector<std::string> lines;
+};
+
 struct NetworkIdsTree {
     std::string root_id;
     // Every item occurs once; an empty parent denotes the root.
@@ -60,6 +76,8 @@ struct NetworkProcessingOptions {
     double visualization_width_mm = 100;
     double visualization_end_inset_mm = 50;
     double block_visualization_offset_mm = 50;
+    double visualization_text_height_mm = 35;
+    double visualization_text_offset_mm = 50;
     double minimum_segment_length_mm = 100;
 };
 

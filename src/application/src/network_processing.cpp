@@ -20,6 +20,12 @@ DsdApplication::discover_connected_lines(const SourcePath& root,
     return network_discovery_.discover(root, candidates, options);
 }
 
+std::vector<VisualizationText>
+DsdApplication::create_visualization_texts(const DuctNetwork& network,
+                                           const VisualizationTextFields& fields) const {
+    return visualization_text_factory_.create(network, fields);
+}
+
 DuctNetwork DsdApplication::prepare_network(DuctNetwork draft,
                                             const std::vector<geometry::Block>& blocks) const {
     if (!draft.root || draft.id.empty())

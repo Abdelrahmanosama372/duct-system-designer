@@ -19,7 +19,7 @@ void Autocad::Commands::RegisterUiCommands()
 {
         Autocad::Network::Initialize();
         acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DSD_NETWORK_ACTION"),
-            _T("DSD_NETWORK_ACTION"),ACRX_CMD_MODAL,Autocad::Network::ExecutePendingAction);
+            _T("DSD_NETWORK_ACTION"),ACRX_CMD_MODAL | ACRX_CMD_REDRAW,Autocad::Network::ExecutePendingAction);
         acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DUCT_VIS_INFO"),
             _T("DUCT_VIS_INFO"),ACRX_CMD_MODAL,Autocad::Network::IdentifyVisualization);
         acedRegCmds->addCommand(

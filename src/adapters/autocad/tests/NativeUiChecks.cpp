@@ -10,6 +10,13 @@
 #include "autocad/ui/panels/ReportsPanel.h"
 #include "autocad/ui/panels/ProjectInformationPanel.h"
 
+namespace {
+int labelRefreshRequests=0;
+bool CaptureLabelRefresh(NetworkActions::Action action,HWND) {
+    if(action==NetworkActions::Action::RefreshLabels)++labelRefreshRequests;
+    return true;
+}
+}
 struct ResizeProbe {int attempts=0,sizeMessages=0;};
 static LRESULT CALLBACK ProbeScrollResize(HWND window,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR data)
 {
@@ -199,6 +206,14 @@ public:
                 registration.SendMessage(WM_DSD_NETWORK_UPDATED);Pump();
                 if(!static_cast<UiButton*>(registration.GetDlgItem(NC_TERMINAL))->SelectionComplete() ||
                    !static_cast<UiButton*>(registration.GetDlgItem(NC_DAMPER))->SelectionComplete())++errors;
+                NetworkActions::SetHandler(CaptureLabelRefresh);
+                labelRefreshRequests=0;
+                for(UINT field:{NC_FLOW,NC_DIMENSIONS,NC_BOD}) {
+                    registration.SendDlgItemMessage(field,BM_CLICK);Pump();
+                    registration.SendDlgItemMessage(field,BM_CLICK);Pump();
+                }
+                if(labelRefreshRequests!=6)++errors;
+                NetworkActions::SetHandler(nullptr);
                 registration.SetDlgItemText(NC_NAME,L"Test network");
                 registration.SetDlgItemText(NC_HEAD,L"invalid");setMethod(1);
                 if(visible(NC_HEAD) || !visible(NC_VELOCITY))++errors;

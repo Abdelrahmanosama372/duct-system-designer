@@ -5,6 +5,9 @@ namespace {
 NetworkActions::Handler handler = nullptr;
 }
 void NetworkActions::SetHandler(Handler value) { handler = value; }
+bool NetworkActions::RefreshLabels(HWND notifyWindow) {
+    return handler && handler(Action::RefreshLabels, notifyWindow);
+}
 bool NetworkActions::Request(Action action, HWND notifyWindow) {
     if (handler)
         return handler(action, notifyWindow);

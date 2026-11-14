@@ -17,7 +17,8 @@ inline double distance(const Point& a, const Point& b) { return std::hypot(a.x -
 inline void validate(const NetworkProcessingOptions& o) {
     for (double value : {o.connection_tolerance_mm, o.angle_threshold_degrees,
                          o.visualization_width_mm, o.visualization_end_inset_mm,
-                         o.block_visualization_offset_mm, o.minimum_segment_length_mm}) {
+                         o.block_visualization_offset_mm, o.minimum_segment_length_mm,
+                         o.visualization_text_height_mm, o.visualization_text_offset_mm}) {
         if (!std::isfinite(value) || value <= 0)
             throw std::invalid_argument("Network options must be positive and finite");
     }

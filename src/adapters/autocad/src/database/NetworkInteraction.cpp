@@ -13,6 +13,7 @@
 #include "dbents.h"
 #include "dbhatch.h"
 #include "dbpl.h"
+#include "dbmtext.h"
 #include "dbsymtb.h"
 #include <algorithm>
 #include <cmath>
@@ -30,11 +31,14 @@ constexpr const wchar_t* visualizationApp = L"DSD_NETWORK_VIS";
 struct Cancelled {};
 struct Pending {
     NetworkActions::Action action;
-    HWND window;
     AcApDocument* document;
 };
 std::optional<Pending> pending;
-std::map<std::string, std::vector<AcDbObjectId>> displayed;
+struct DisplayedNetwork {
+    std::vector<AcDbObjectId> rectangles;
+    std::vector<AcDbObjectId> texts;
+};
+std::map<std::string, DisplayedNetwork> displayed;
 HWND notificationWindow = nullptr;
 
 class DocumentReactor final : public AcApDocManagerReactor {
@@ -223,7 +227,8 @@ Snapshot snapshot(AcDbObjectId space, double scale, const DuctNetwork& draft) {
                 {handle(*block),
                  name,
                  point(block->position(), scale),
-                 {point(bounds.minPoint(), scale), point(bounds.maxPoint(), scale)}});
+                 {point(bounds.minPoint(), scale), point(bounds.maxPoint(), scale)},
+                 block->rotation()});
         } else if (const auto path = read_path(*entity, scale))
             result.paths.push_back(*path);
     }
@@ -259,7 +264,8 @@ void ensure_regapp(AcDbDatabase& database) {
         check(table->add(id, record.get()), "Could not create visualization registry");
     }
 }
-void tag(AcDbEntity& entity, const DuctNetwork& network, const VisualizationRectangle& rectangle) {
+template <class Visual>
+void tag(AcDbEntity& entity, const DuctNetwork& network, const Visual& rectangle) {
     const auto networkId = wide(network.id), visualId = wide(rectangle.id),
                itemId = wide(rectangle.item_id);
     const wchar_t* type = rectangle.type == NetworkItemType::Segment       ? L"segment"
@@ -283,16 +289,78 @@ void erase(const std::vector<AcDbObjectId>& ids) {
         }
     }
 }
+std::wstring text_contents(const VisualizationText& text) {
+    // Center every paragraph, rather than just centering the overall text box.
+    std::wstring contents = L"\\pxqc;";
+    for (std::size_t i = 0; i < text.lines.size(); ++i) {
+        if (i)
+            contents += L"\\P";
+        for (const auto character : wide(text.lines[i])) {
+            if (character == L'\\' || character == L'{' || character == L'}')
+                contents += L'\\';
+            contents += character;
+        }
+    }
+    return contents;
+}
+void append_texts(AcDbDatabase& database, AcDbBlockTableRecord& owner, AcDbObjectId layer,
+                  double scale, const DuctNetwork& network, const NetworkDraft& form,
+                  std::vector<AcDbObjectId>& created) {
+    const auto texts = DuctUi::Application().create_visualization_texts(
+        network, {form.flow, form.dimensions, form.bod});
+    created.reserve(texts.size());
+    for (const auto& item : texts) {
+        Object<AcDbMText> text{new AcDbMText};
+        text->setDatabaseDefaults(&database);
+        check(text->setLayer(layer), "Could not set visualization text layer");
+        check(text->setColorIndex(network.color_index), "Could not set visualization text color");
+        check(text->setNormal({0, 0, 1}), "Could not set visualization text plane");
+        // Use a WCS direction so a rotated UCS cannot change the XY layout.
+        check(text->setDirection({std::cos(item.rotation), std::sin(item.rotation), 0}),
+              "Could not set visualization text direction");
+        check(text->setAttachment(AcDbMText::kBottomCenter), "Could not center visualization text");
+        check(text->setTextHeight(item.height_mm / scale),
+              "Could not set visualization text height");
+        check(text->setWidth(0), "Could not disable visualization text wrapping");
+        check(text->setLocation({item.bottom_center.x / scale, item.bottom_center.y / scale, 0}),
+              "Could not position visualization text");
+        const auto contents = text_contents(item);
+        text->setContents(contents.c_str());
+        AcDbObjectId id;
+        check(owner.appendAcDbEntity(id, text.get()), "Could not add visualization text");
+        created.push_back(id);
+        tag(*text, network, item);
+    }
+}
+void render_labels(AcDbDatabase& database, AcDbObjectId space, double scale,
+                   const DuctNetwork& network, const NetworkDraft& form) {
+    const auto layer = ensure_layer(database);
+    ensure_regapp(database);
+    auto owner = open<AcDbBlockTableRecord>(space, AcDb::kForWrite);
+    auto& previous = displayed[network.document_key + ":" + network.id].texts;
+    std::vector<AcDbObjectId> created;
+    try {
+        append_texts(database, *owner, layer, scale, network, form, created);
+        erase(previous);
+        previous.swap(created);
+    } catch (...) {
+        try {
+            erase(created);
+        } catch (...) {
+        }
+        throw;
+    }
+}
 void render(AcDbDatabase& database, AcDbObjectId space, double scale, const DuctNetwork& network,
-            bool showSegments) {
+            const NetworkDraft& form) {
     const auto layer = ensure_layer(database);
     ensure_regapp(database);
     auto owner = open<AcDbBlockTableRecord>(space, AcDb::kForWrite);
     auto& previous = displayed[network.document_key + ":" + network.id];
-    std::vector<AcDbObjectId> created;
-    created.reserve(2 * (network.segmented_lines_vis_rectangles.size() +
-                         network.air_terminals_blocks_vis_rectangles.size() +
-                         network.damper_blocks_vis_rectangles.size()));
+    DisplayedNetwork created;
+    created.rectangles.reserve(2 * (network.segmented_lines_vis_rectangles.size() +
+                                    network.air_terminals_blocks_vis_rectangles.size() +
+                                    network.damper_blocks_vis_rectangles.size()));
     const auto append = [&](const VisualizationRectangle& rectangle) {
         Object<AcDbPolyline> boundary{new AcDbPolyline(4)};
         boundary->setDatabaseDefaults(&database);
@@ -310,7 +378,7 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
         AcDbObjectId boundaryId;
         check(owner->appendAcDbEntity(boundaryId, boundary.get()),
               "Could not add visualization boundary");
-        created.push_back(boundaryId);
+        created.rectangles.push_back(boundaryId);
         tag(*boundary, network, rectangle);
         boundary.reset();
         Object<AcDbHatch> hatch{new AcDbHatch};
@@ -324,7 +392,7 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
         check(hatch->setAssociative(true), "Could not set hatch boundary association");
         AcDbObjectId hatchId;
         check(owner->appendAcDbEntity(hatchId, hatch.get()), "Could not add visualization hatch");
-        created.push_back(hatchId);
+        created.rectangles.push_back(hatchId);
         AcDbObjectIdArray loop;
         loop.append(boundaryId);
         check(hatch->appendLoop(AcDbHatch::kExternal, loop), "Could not set hatch boundary");
@@ -332,18 +400,22 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
         tag(*hatch, network, rectangle);
     };
     try {
-        if (showSegments)
+        if (form.segments)
             for (const auto& rectangle : network.segmented_lines_vis_rectangles)
                 append(rectangle);
         for (const auto& rectangle : network.air_terminals_blocks_vis_rectangles)
             append(rectangle);
         for (const auto& rectangle : network.damper_blocks_vis_rectangles)
             append(rectangle);
-        erase(previous);
-        previous.swap(created);
+        append_texts(database, *owner, layer, scale, network, form, created.texts);
+        erase(previous.texts);
+        erase(previous.rectangles);
+        previous.rectangles.swap(created.rectangles);
+        previous.texts.swap(created.texts);
     } catch (...) {
         try {
-            erase(created);
+            erase(created.texts);
+            erase(created.rectangles);
         } catch (...) {
         }
         throw;
@@ -360,16 +432,21 @@ bool request(NetworkActions::Action action, HWND window) {
         session.message = L"Open a drawing before selecting network geometry.";
         return false;
     }
-    pending = Pending{action, window, document};
-    notificationWindow = window;
+    pending = Pending{action, document};
+    if (::IsWindow(window))
+        notificationWindow = window;
     session.busy = true;
-    session.message = L"Select the requested source entity in the drawing.";
+    session.message = action == NetworkActions::Action::RefreshLabels
+                          ? L"Refreshing visualization text..."
+                          : L"Select the requested source entity in the drawing.";
+    NetworkSession::Notify();
     const auto status =
         acDocManager->sendStringToExecute(document, L"_DSD_NETWORK_ACTION ", true, false, false);
     if (status != Acad::eOk) {
         pending.reset();
         session.busy = false;
-        session.message = L"Could not start network selection.";
+        session.message = L"Could not start the drawing update.";
+        NetworkSession::Notify();
         return false;
     }
     return true;
@@ -407,6 +484,15 @@ void Autocad::Network::ExecutePendingAction() {
         if (session.network && session.network->document_key != key)
             throw std::runtime_error("Reset the draft before selecting geometry in "
                                      "another drawing or layout");
+        if (operation.action == NetworkActions::Action::RefreshLabels) {
+            if (!session.network)
+                throw std::invalid_argument("Select a root before displaying labels");
+            render_labels(*database, space, scale, *session.network, session.form);
+            session.busy = false;
+            session.message = L"Visualization text refreshed.";
+            NetworkSession::Notify();
+            return;
+        }
         DuctNetwork draft = session.network ? *session.network : DuctNetwork{};
         if (draft.id.empty()) {
             draft.id = network_item_id("NET", NetworkSession::NextId());
@@ -454,7 +540,7 @@ void Autocad::Network::ExecutePendingAction() {
         draft.lines = drawing.paths;
         auto prepared = std::make_unique<DuctNetwork>(
             DuctUi::Application().prepare_network(std::move(draft), drawing.blocks));
-        render(*database, space, scale, *prepared, session.form.segments);
+        render(*database, space, scale, *prepared, session.form);
         if (!session.network)
             session.form.id = NetworkSession::NextId()++;
         session.network = std::move(prepared);
@@ -479,8 +565,7 @@ void Autocad::Network::ExecutePendingAction() {
         session.message = L"Could not update network visualization. Please try again.";
     }
     session.busy = false;
-    if (::IsWindow(operation.window))
-        ::PostMessage(operation.window, WM_DSD_NETWORK_UPDATED, 0, 0);
+    NetworkSession::Notify();
 }
 
 std::optional<Autocad::Network::VisualizationIdentity>
@@ -504,23 +589,28 @@ Autocad::Network::ResolveCurrentVisualization(AcDbObjectId id) {
     auto* document = acDocManager->mdiActiveDocument();
     if (!network || !document || id.isNull() || !id.isValid() || id.isErased() ||
         id.database() != document->database() ||
-        network->document_key != document_key(*document->database(), document->database()->currentSpaceId()))
+        network->document_key !=
+            document_key(*document->database(), document->database()->currentSpaceId()))
         return std::nullopt;
     const auto current = displayed.find(network->document_key + ":" + network->id);
     if (current == displayed.end() ||
-        std::find(current->second.begin(), current->second.end(), id) == current->second.end())
+        std::find(current->second.rectangles.begin(), current->second.rectangles.end(), id) ==
+            current->second.rectangles.end())
         return std::nullopt;
     const auto identity = ResolveVisualization(id);
-    if (!identity || identity->network_id != wide(network->id)) return std::nullopt;
+    if (!identity || identity->network_id != wide(network->id))
+        return std::nullopt;
     const auto matches = [&](const auto& rectangles) {
         return std::any_of(rectangles.begin(), rectangles.end(), [&](const auto& rectangle) {
             return wide(rectangle.id) == identity->visualization_id &&
                    wide(rectangle.item_id) == identity->item_id;
         });
     };
-    const bool valid = identity->type == L"segment" ? matches(network->segmented_lines_vis_rectangles)
-                     : identity->type == L"air_terminal" ? matches(network->air_terminals_blocks_vis_rectangles)
-                     : identity->type == L"damper" && matches(network->damper_blocks_vis_rectangles);
+    const bool valid =
+        identity->type == L"segment" ? matches(network->segmented_lines_vis_rectangles)
+        : identity->type == L"air_terminal"
+            ? matches(network->air_terminals_blocks_vis_rectangles)
+            : identity->type == L"damper" && matches(network->damper_blocks_vis_rectangles);
     return valid ? identity : std::nullopt;
 }
 void Autocad::Network::IdentifyVisualization() {
