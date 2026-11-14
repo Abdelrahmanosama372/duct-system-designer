@@ -112,5 +112,88 @@ TEST(NetworkProcessingTest, KeepsEquipmentMetadataAndIdsWhenRediscoveringTheSame
     EXPECT_EQ(refreshed.air_terminal_blocks_infos[0].metadata,
               first.air_terminal_blocks_infos[0].metadata);
 }
+
+TEST(NetworkProcessingTest, NewRootRebuildsAllItemsUsingTheExistingEquipmentTemplates) {
+    const auto first_root = path("A", {{0, 0}, {2000, 0}});
+    const auto second_root = path("B", {{0, 3000}, {2000, 3000}});
+    const std::vector<geometry::Block> blocks{
+        block("AT-A", L"Terminal", {500, 0}), block("VCD-A", L"Damper", {1500, 0}),
+        block("AT-B", L"Terminal", {500, 3000}), block("VCD-B", L"Damper", {1500, 3000})};
+    auto input = draft({first_root, second_root});
+    input.air_terminal_block_name = L"Terminal";
+    input.damper_block_name = L"Damper";
+    const DsdApplication application;
+    auto selected = application.prepare_network(input, blocks);
+    selected.root = second_root;
+    selected.lines = {first_root, second_root};
+
+    const auto result = application.prepare_network(selected, blocks);
+
+    EXPECT_EQ(result.id, input.id);
+    EXPECT_EQ(result.air_terminal_block_name, input.air_terminal_block_name);
+    EXPECT_EQ(result.damper_block_name, input.damper_block_name);
+    ASSERT_EQ(result.lines.size(), 1);
+    EXPECT_EQ(result.lines.front().source_id, "B");
+    ASSERT_EQ(result.air_terminal_blocks_infos.size(), 1);
+    ASSERT_EQ(result.damper_blocks_infos.size(), 1);
+    EXPECT_EQ(result.air_terminal_blocks_infos.front().raw_block.source_id, "AT-B");
+    EXPECT_EQ(result.damper_blocks_infos.front().raw_block.source_id, "VCD-B");
+    EXPECT_EQ(result.segmented_lines_infos.size(), 3);
+    EXPECT_EQ(result.segmented_lines_vis_rectangles.size(), 3);
+    EXPECT_EQ(result.air_terminals_blocks_vis_rectangles.size(), 1);
+    EXPECT_EQ(result.damper_blocks_vis_rectangles.size(), 1);
+    EXPECT_EQ(result.network_ids_tree.parents.size(), 5);
+    for (const auto& rectangles : {result.segmented_lines_vis_rectangles,
+                                   result.air_terminals_blocks_vis_rectangles,
+                                   result.damper_blocks_vis_rectangles})
+        for (const auto& rectangle : rectangles)
+            for (const auto& corner : rectangle.corners)
+                EXPECT_GT(corner.y, 2900); // No rectangles remain at the previous root.
+}
+
+TEST(NetworkProcessingTest, NewEquipmentTemplateReplacesItsMatchesAndRebuildsSegmentation) {
+    for (const bool replace_terminal : {true, false}) {
+        SCOPED_TRACE(replace_terminal ? "terminal" : "damper");
+        auto input = draft({path("A", {{0, 0}, {3000, 0}})});
+        input.air_terminal_block_name = L"Terminal A";
+        input.damper_block_name = L"Damper A";
+        const std::vector<geometry::Block> blocks{
+            block("AT-A", L"Terminal A", {500, 0}),
+            block("AT-B", L"Terminal B", {1000, 0}),
+            block("VCD-A", L"Damper A", {2000, 0}),
+            block("VCD-B", L"Damper B", {2500, 0})};
+        const DsdApplication application;
+        auto selected = application.prepare_network(input, blocks);
+        const auto old_visualization = replace_terminal
+                                           ? selected.air_terminals_blocks_vis_rectangles.front().id
+                                           : selected.damper_blocks_vis_rectangles.front().id;
+        if (replace_terminal)
+            selected.air_terminal_block_name = L"Terminal B";
+        else
+            selected.damper_block_name = L"Damper B";
+
+        const auto result = application.prepare_network(selected, blocks);
+
+        EXPECT_EQ(result.root->source_id, input.root->source_id);
+        ASSERT_EQ(result.air_terminal_blocks_infos.size(), 1);
+        ASSERT_EQ(result.damper_blocks_infos.size(), 1);
+        EXPECT_EQ(result.air_terminal_blocks_infos.front().raw_block.source_id,
+                  replace_terminal ? "AT-B" : "AT-A");
+        EXPECT_EQ(result.damper_blocks_infos.front().raw_block.source_id,
+                  replace_terminal ? "VCD-A" : "VCD-B");
+        ASSERT_EQ(result.segmented_lines_infos.size(), 3);
+        EXPECT_DOUBLE_EQ(result.segmented_lines_infos[0].raw_line.end.x,
+                         replace_terminal ? 1000 : 500);
+        EXPECT_DOUBLE_EQ(result.segmented_lines_infos[1].raw_line.end.x,
+                         replace_terminal ? 2000 : 2500);
+        EXPECT_EQ(result.segmented_lines_vis_rectangles.size(), 3);
+        ASSERT_EQ(result.air_terminals_blocks_vis_rectangles.size(), 1);
+        ASSERT_EQ(result.damper_blocks_vis_rectangles.size(), 1);
+        const auto& replacement = replace_terminal ? result.air_terminals_blocks_vis_rectangles
+                                                   : result.damper_blocks_vis_rectangles;
+        EXPECT_NE(replacement.front().id, old_visualization);
+        EXPECT_EQ(result.network_ids_tree.parents.size(), 5);
+    }
+}
 } // namespace
 } // namespace dsd::application::test

@@ -272,11 +272,14 @@ void tag(AcDbEntity& entity, const DuctNetwork& network, const VisualizationRect
     check(status, "Could not attach visualization identity");
 }
 void erase(const std::vector<AcDbObjectId>& ids) {
-    for (const auto& id : ids)
+    // Each pair is boundary then associative hatch. Remove the hatch first.
+    for (auto item = ids.rbegin(); item != ids.rend(); ++item) {
+        const auto& id = *item;
         if (!id.isNull() && id.isValid() && !id.isErased()) {
             auto entity = open<AcDbEntity>(id, AcDb::kForWrite);
             check(entity->erase(), "Could not replace a previous visualization");
         }
+    }
 }
 void render(AcDbDatabase& database, AcDbObjectId space, double scale, const DuctNetwork& network,
             bool showSegments) {
@@ -417,10 +420,7 @@ void Autocad::Network::ExecutePendingAction() {
             const auto root = read_path(*selected, scale);
             if (!root)
                 throw std::invalid_argument("Root must be a LINE or straight POLYLINE");
-            if (!draft.root || draft.root->source_id != root->source_id) {
-                draft.air_terminal_block_name.reset();
-                draft.damper_block_name.reset();
-            }
+            // A new root changes the source network, not the equipment templates.
             draft.root = root;
         } else {
             if (!draft.root)
