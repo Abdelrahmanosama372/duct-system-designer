@@ -5,6 +5,7 @@
 #include "autocad/ui/model/NetworkSession.h"
 #include "autocad/ui/model/PropertiesSession.h"
 #include "acdocman.h"
+#include "adscodes.h"
 #include <stdexcept>
 
 namespace {
