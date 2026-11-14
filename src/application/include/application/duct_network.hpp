@@ -57,8 +57,8 @@ struct NetworkIdsTree {
 struct NetworkProcessingOptions {
     double connection_tolerance_mm = 5;
     double angle_threshold_degrees = 5;
-    double visualization_width_mm = 100;
-    double visualization_end_inset_mm = 50;
+    double visualization_width_mm = 200;
+    double visualization_end_inset_mm = 250;
     double block_visualization_offset_mm = 50;
     double minimum_segment_length_mm = 100;
 };
