@@ -190,6 +190,12 @@ std::string document_key(AcDbDatabase& database, AcDbObjectId space) {
     return std::to_string(reinterpret_cast<std::uintptr_t>(&database)) + ":" + handle(*record);
 }
 AcDbObjectId select(const wchar_t* prompt) {
+    // This runs in the queued AutoCAD command, after the button click has returned.
+    // Activate the drawing view before entering AutoCAD's native selection loop.
+    auto* view = acedGetAcadDwgView();
+    if (!view || !::IsWindow(view->GetSafeHwnd()))
+        throw std::runtime_error("The drawing view is unavailable; repeat the selection");
+    view->SetFocus();
     ads_name name;
     ads_point picked;
     if (acedEntSel(prompt, name, picked) != RTNORM)
