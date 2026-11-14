@@ -1,6 +1,7 @@
 #pragma once
 #include "autocad/ui/layout/TabbedContent.h"
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/NetworkActions.h"
 #include <array>
 #include <cmath>
 #include <cwchar>
@@ -49,6 +50,19 @@ class NetworkRegistrationPage : public ScrollPage
         else box->SetWindowText(value);
     }
     void Status(LPCTSTR value) { SetDlgItemText(NC_STATUS,value); }
+    void UpdateSelectionState()
+    {
+        const auto& session=NetworkSession::Current();
+        const auto* network=session.network.get();
+        const bool root=network && network->root.has_value();
+        static_cast<UiButton*>(GetDlgItem(NC_ROOT))->SetSelectionComplete(root);
+        static_cast<UiButton*>(GetDlgItem(NC_TERMINAL))->SetSelectionComplete(root && network->air_terminal_block_name.has_value());
+        static_cast<UiButton*>(GetDlgItem(NC_DAMPER))->SetSelectionComplete(root && network->damper_block_name.has_value());
+        GetDlgItem(NC_ROOT)->EnableWindow(!session.busy);
+        for(UINT id:{NC_TERMINAL,NC_DAMPER,NC_REFRESH,NC_ANALYZE})GetDlgItem(id)->EnableWindow(root && !session.busy);
+        GetDlgItem(NC_NEW)->EnableWindow(!session.busy);
+        GetDlgItem(NC_REGISTER)->EnableWindow(FALSE); // No analyzer can approve registration yet.
+    }
     void UpdateMethod()
     {
         const bool friction=Text(NC_METHOD)==L"Equal Friction";
@@ -70,7 +84,7 @@ class NetworkRegistrationPage : public ScrollPage
     }
     NetworkDraft Read() const
     {
-        NetworkDraft draft;
+        NetworkDraft draft=NetworkSession::Current().form;
         draft.name=Text(NC_NAME); draft.system=Text(NC_SYSTEM);
         draft.sizingMethod=Text(NC_METHOD);draft.headLoss=Text(NC_HEAD);draft.velocity=Text(NC_VELOCITY);
         draft.material=Text(NC_MATERIAL);draft.roughness=Text(NC_ROUGHNESS);
@@ -144,7 +158,7 @@ protected:
         UiStyle::TextColor(*GetDlgItem(NC_SUBTITLE),UiStyle::ProjectReferenceStyle.muted);
         Label(L"Network configuration",NC_CONFIG,true);
         Label(L"Name:",NC_NAME_LABEL); m_name=&Control<CEdit>(L"",WS_BORDER|ES_AUTOHSCROLL,NC_NAME);
-        m_name->SetWindowText(L"Supply Network 04");
+        m_name->SetWindowText(NetworkSession::Current().form.name);
         m_name->SetLimitText(100);
         Label(L"System Type:",NC_SYSTEM_LABEL); m_system=&Combo(NC_SYSTEM);
         Fill(*m_system,{L"Supply Air",L"Return Air",L"Exhaust Air"},L"Supply Air");
@@ -167,7 +181,7 @@ protected:
         Label(L"Maximum aspect ratio",NC_ASPECT_LABEL);NumberEdit(NC_ASPECT,L"2.0");
         Label(L"Duct material",NC_MATERIAL_SECTION,true);
         Label(L"Material",NC_MATERIAL_LABEL);m_material=&Combo(NC_MATERIAL);
-        Fill(*m_material,{L"Galvanized Steel",L"Stainless Steel",L"Aluminum",L"Flexible Duct"},L"Galvanized Steel");
+        Fill(*m_material,{L"Galvanized Steel",L"Stainless Steel",L"Aluminum",L"Carbon Steel"},L"Galvanized Steel");
         Label(L"Absolute roughness (mm)",NC_ROUGHNESS_LABEL);NumberEdit(NC_ROUGHNESS,L"0.15");
         Control<CButton>(L"Analyze Network",BS_PUSHBUTTON,NC_ANALYZE);
         static_cast<UiButton*>(GetDlgItem(NC_ANALYZE))->SetPrimary(true);
@@ -181,13 +195,13 @@ protected:
         Control<CButton>(L"Width and Height",BS_AUTOCHECKBOX,NC_DIMENSIONS);
         CheckDlgButton(NC_SEGMENTS,BST_CHECKED);
         Control<CButton>(L"Refresh Visualization",BS_PUSHBUTTON,NC_REFRESH);
-        Label(L"UI preview ready. All network data is sample data.",NC_STATUS);
-        Label(L"Sample data for UI preview only. Nothing is saved to the drawing.",NC_NOTICE);
+        Label(NetworkSession::Current().message,NC_STATUS);
+        Label(L"Draft visualization is available. Registration awaits the analyzer.",NC_NOTICE);
         const UINT sections[]={NC_CONFIG,NC_DEFINITION,NC_SIZING,NC_PARAMETERS,NC_MATERIAL_SECTION,NC_VISUALIZATION};
         for(int i=0;i<6;++i)static_cast<UiHeading*>(GetDlgItem(sections[i]))->SetNumber(i+1);
         static_cast<UiEdit*>(m_name)->SetPlaceholder(L"Enter network name");
         UiStyle::TextColor(*GetDlgItem(NC_NOTICE),UiStyle::ProjectReferenceStyle.muted);
-        m_loading=false;m_contentHeight=1612;m_layoutReady=true;UpdateMethod();return 0;
+        m_contentHeight=1612;m_layoutReady=true;LoadForm(NetworkSession::Current().form);return 0;
     }
     BOOL OnCommand(WPARAM wp, LPARAM lp) override
     {
@@ -197,42 +211,45 @@ protected:
         {
             if (id==NC_REGISTER)
             {
-                if (!Validate()) return TRUE;
-                NetworkDraft draft=Read();
-                if (m_editIndex>=0)
-                { draft.id=NetworkSession::Drafts()[m_editIndex].id; NetworkSession::Drafts()[m_editIndex]=draft; }
-                else
-                {
-                    if(NetworkSession::Drafts().size()>=1000) { Status(L"Session limit reached (1000 drafts)."); return TRUE; }
-                    draft.id=NetworkSession::NextId()++; NetworkSession::Drafts().push_back(draft);
-                    m_editIndex=static_cast<int>(NetworkSession::Drafts().size())-1;
-                }
-                SetDlgItemText(NC_REGISTER,L"Save Changes");
-                Status(L"Draft saved for this session. See Registered Networks.");
-                RefreshNetworkCards(); return TRUE;
+                Status(L"Registration requires successful analysis. Analyzers are not implemented yet.");
+                return TRUE;
             }
             if (id==NC_NEW) { NewDraft(); return TRUE; }
             if (id==NC_ANALYZE)
             {
-                if(Validate()) Status(L"Form is valid. Network analysis is not connected yet.");
+                if(Validate()) Status(L"Analyzers are not implemented yet. Registration remains unavailable.");
                 return TRUE;
             }
-            if (id==NC_ROOT || id==NC_TERMINAL || id==NC_DAMPER)
-            { Status(L"Drawing selection is not connected in this UI version."); return TRUE; }
-            if (id==NC_REFRESH)
-            { Status(L"Visualization options set. Drawing visualization is not connected yet."); return TRUE; }
+            if(id==NC_ROOT || id==NC_TERMINAL || id==NC_DAMPER || id==NC_REFRESH)
+            {
+                NetworkSession::UpdateForm(Read());
+                const auto action=id==NC_ROOT?NetworkActions::Action::PickRoot:
+                    id==NC_TERMINAL?NetworkActions::Action::PickAirTerminal:
+                    id==NC_DAMPER?NetworkActions::Action::PickDamper:NetworkActions::Action::Refresh;
+                NetworkActions::Request(action,m_hWnd);
+                UpdateSelectionState();Status(NetworkSession::Current().message);return TRUE;
+            }
         }
         if (!m_loading && ((code==EN_CHANGE && (id==NC_NAME || id==NC_ASPECT || id==NC_HEAD || id==NC_VELOCITY || id==NC_ROUGHNESS)) || code==CBN_SELCHANGE ||
             code==CBN_EDITCHANGE || (code==BN_CLICKED && id>=NC_SEGMENTS && id<=NC_DIMENSIONS)))
-            Status(L"Form changed. Click Register or Save Changes to keep the draft.");
+        {
+            NetworkSession::UpdateForm(Read());
+            Status(L"Draft settings changed. Registration awaits the analyzer.");
+        }
         return ScrollPage::OnCommand(wp,lp);
     }
 public:
     void LoadDraft(size_t index)
     {
         if(index>=NetworkSession::Drafts().size())return;
-        const NetworkDraft& draft=NetworkSession::Drafts()[index];
-        m_loading=true; m_editIndex=static_cast<int>(index);
+        m_editIndex=static_cast<int>(index);
+        NetworkSession::ResetDraft();
+        NetworkSession::UpdateForm(NetworkSession::Drafts()[index]);
+        LoadForm(NetworkSession::Current().form);
+    }
+    void LoadForm(const NetworkDraft& draft)
+    {
+        m_loading=true;
         m_name->SetWindowText(draft.name); Select(m_system,draft.system);
         Select(m_method,draft.sizingMethod);Select(m_material,draft.material);
         SetDlgItemText(NC_HEAD,draft.headLoss);SetDlgItemText(NC_VELOCITY,draft.velocity);
@@ -243,21 +260,19 @@ public:
         CheckDlgButton(NC_FLOW,draft.flow?BST_CHECKED:BST_UNCHECKED);
         CheckDlgButton(NC_BOD,draft.bod?BST_CHECKED:BST_UNCHECKED);
         CheckDlgButton(NC_DIMENSIONS,draft.dimensions?BST_CHECKED:BST_UNCHECKED);
-        SetDlgItemText(NC_REGISTER,L"Save Changes");
-        Status(L"Editing registered draft. Click Save Changes to update it.");
-        UpdateMethod();m_loading=false; ScrollTo(0);
+        SetDlgItemText(NC_REGISTER,L"Register");
+        Status(NetworkSession::Current().message);
+        UpdateMethod();UpdateSelectionState();m_loading=false; ScrollTo(0);
     }
     void NewDraft()
     {
-        m_loading=true; m_editIndex=-1; m_name->SetWindowText(L"");
-        Select(m_system,L"Supply Air");Select(m_method,L"Equal Friction");Select(m_material,L"Galvanized Steel");
-        Select(m_min,L"100");Select(m_max,L"2000");Select(m_increment,L"25");
-        SetDlgItemText(NC_ASPECT,L"2.0");SetDlgItemText(NC_HEAD,L"0.1");
-        SetDlgItemText(NC_VELOCITY,L"1000");SetDlgItemText(NC_ROUGHNESS,L"0.15");
-        CheckDlgButton(NC_SEGMENTS,BST_CHECKED); CheckDlgButton(NC_FLOW,BST_UNCHECKED);
-        CheckDlgButton(NC_BOD,BST_UNCHECKED); CheckDlgButton(NC_DIMENSIONS,BST_UNCHECKED);
-        SetDlgItemText(NC_REGISTER,L"Register"); Status(L"Ready. Configure a new network draft.");
-        UpdateMethod();m_loading=false; ScrollTo(0); m_name->SetFocus();
+        if(NetworkSession::Current().busy)return;
+        NetworkSession::ResetDraft();m_editIndex=-1;
+        LoadForm(NetworkSession::Current().form);m_name->SetFocus();
+    }
+    afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM)
+    {
+        UpdateSelectionState();Status(NetworkSession::Current().message);return 0;
     }
     DECLARE_MESSAGE_MAP()
 };
@@ -352,7 +367,7 @@ protected:
         static_cast<UiEdit*>(m_search)->SetPlaceholder(L"Search network name...");
         Label(L"0 networks",NC_COUNT);
         Label(L"No registered networks yet.\nUse the Registration tab to create your first draft.",NC_EMPTY);
-        Label(L"Sample networks, counts, flows and statuses for UI preview only. Changes last for this session.",NC_LIST_NOTICE);
+        Label(L"Registered networks will appear here after successful analysis and registration.",NC_LIST_NOTICE);
         m_layoutReady=true; Rebuild(); return 0;
     }
     BOOL OnCommand(WPARAM wp,LPARAM lp) override
@@ -482,7 +497,7 @@ protected:
         UiStyle::SetVisualStyle(*this,UiStyle::ProjectReferenceStyle);
         if(CWnd::OnCreate(cs)==-1)return -1;
         ModifyStyleEx(0,WS_EX_COMPOSITED);
-        NetworkSession::InitializeSamples();
+
         m_headingFont.CreateFont(-Px(22),0,0,0,FW_SEMIBOLD,FALSE,FALSE,0,DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,Fonts::Face(FW_SEMIBOLD));
         m_tabFont.CreateFont(-Px(13),0,0,0,FW_MEDIUM,FALSE,FALSE,0,DEFAULT_CHARSET,

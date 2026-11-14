@@ -1,30 +1,31 @@
 #include "autocad/ui/model/NetworkSession.h"
 
-namespace
-{
-    std::vector<NetworkDraft> gNetworkDrafts;
-    int gNextNetworkId=4;
-    bool gDemoNetworksInitialized=false;
+namespace {
+std::vector<NetworkDraft> registeredNetworks;
+NetworkDraftSession current;
+int nextId = 1;
+} // namespace
+std::vector<NetworkDraft>& NetworkSession::Drafts() { return registeredNetworks; }
+int& NetworkSession::NextId() { return nextId; }
+NetworkDraftSession& NetworkSession::Current() { return current; }
+void NetworkSession::ResetDraft() { current = NetworkDraftSession{}; }
+void NetworkSession::Reset() {
+    registeredNetworks.clear();
+    ResetDraft();
+    nextId = 1;
 }
-
-void NetworkSession::InitializeSamples()
-{
-    if (gDemoNetworksInitialized) return;
-    gDemoNetworksInitialized = true;
-    const wchar_t* names[] = { L"Supply Network 01", L"Return Network 01", L"Exhaust Network 01" };
-    const wchar_t* systems[] = { L"Supply Air", L"Return Air", L"Exhaust Air" };
-    const wchar_t* counts[] = { L"24", L"18", L"12" };
-    const wchar_t* flows[] = { L"2500 CFM", L"1800 CFM", L"900 CFM" };
-    for (int i = 0; i < 3; ++i)
-    {
-        NetworkDraft draft;
-        draft.id = i + 1; draft.name = names[i]; draft.system = systems[i];
-        draft.segmentCount = counts[i]; draft.totalFlow = flows[i];
-        draft.status = i == 1 ? L"Drawn" : L"Analyzed";
-        gNetworkDrafts.push_back(draft);
-    }
+void NetworkSession::UpdateForm(const NetworkDraft& form) {
+    current.form = form;
+    if (!current.network)
+        return;
+    auto& network = *current.network;
+    network.name = {form.name.GetString(), static_cast<std::size_t>(form.name.GetLength())};
+    using namespace dsd::application;
+    network.system_type = form.system == L"Return Air"    ? NetworkSystemType::Return
+                          : form.system == L"Exhaust Air" ? NetworkSystemType::Exhaust
+                                                          : NetworkSystemType::Supply;
+    network.material = form.material == L"Stainless Steel" ? NetworkMaterial::StainlessSteel
+                       : form.material == L"Aluminum"      ? NetworkMaterial::Aluminum
+                       : form.material == L"Carbon Steel"  ? NetworkMaterial::CarbonSteel
+                                                           : NetworkMaterial::GalvanizedSteel;
 }
-
-std::vector<NetworkDraft>& NetworkSession::Drafts(){return gNetworkDrafts;}
-int& NetworkSession::NextId(){return gNextNetworkId;}
-void NetworkSession::Reset(){gNetworkDrafts.clear();gNextNetworkId=4;gDemoNetworksInitialized=false;}

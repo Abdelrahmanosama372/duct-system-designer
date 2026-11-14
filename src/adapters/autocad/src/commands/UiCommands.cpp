@@ -1,6 +1,7 @@
 #include "autocad/commands/UiCommands.h"
 #include "autocad/ui/Designer.h"
 #include "autocad/ui/platform/ObjectArx.h"
+#include "autocad/database/NetworkInteraction.h"
 
 namespace
 {
@@ -16,6 +17,11 @@ void HideNetworkPalette(){DuctUi::SelectProjectInformation();}
 
 void Autocad::Commands::RegisterUiCommands()
 {
+        Autocad::Network::Initialize();
+        acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DSD_NETWORK_ACTION"),
+            _T("DSD_NETWORK_ACTION"),ACRX_CMD_MODAL,Autocad::Network::ExecutePendingAction);
+        acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DUCT_VIS_INFO"),
+            _T("DUCT_VIS_INFO"),ACRX_CMD_MODAL,Autocad::Network::IdentifyVisualization);
         acedRegCmds->addCommand(
             _T("DUCT_SYSTEM"),
             _T("DUCT_PANEL"),
@@ -63,5 +69,6 @@ void Autocad::Commands::RegisterUiCommands()
 
 void Autocad::Commands::UnregisterUiCommands()
 {
+    Autocad::Network::Shutdown();
     acedRegCmds->removeGroup(_T("DUCT_SYSTEM"));
 }

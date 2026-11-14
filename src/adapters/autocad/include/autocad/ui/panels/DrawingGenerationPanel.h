@@ -182,7 +182,7 @@ protected:
     void PageActivated(int index) override{if(index==0)m_geometry.RefreshNetworks();else m_annotations.RefreshNetworks();}
     afx_msg int OnCreate(LPCREATESTRUCT cs)
     {
-        if(CWnd::OnCreate(cs)==-1)return -1;NetworkSession::InitializeSamples();
+        if(CWnd::OnCreate(cs)==-1)return -1;
         if(!CreateHeader(L"Drawing Generation",L"DRAWING OUTPUT",6500,6501,6499))return -1;
         if(!m_geometry.CreatePage(this,6601) || !m_annotations.CreatePage(this,6602))return -1;
         AttachPages({&m_geometry,&m_annotations},{L"Geometry",L"Annotations"});return 0;

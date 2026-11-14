@@ -37,7 +37,13 @@ target_link_libraries(geometry_tests PRIVATE dsd::core GTest::gtest_main)
 set_target_properties(geometry_tests PROPERTIES CXX_EXTENSIONS OFF)
 gtest_discover_tests(geometry_tests NO_PRETTY_VALUES)
 
-add_executable(application_tests application/test_application.cpp)
+add_executable(application_tests
+    application/test_application.cpp
+    application/test_network_discovery.cpp
+    application/test_network_segmentor.cpp
+    application/test_visualization_rectangle_factory.cpp
+    application/test_network_processing.cpp
+)
 dsd_add_application_sources(application_tests)
 target_link_libraries(application_tests PRIVATE GTest::gtest_main)
 set_target_properties(application_tests PROPERTIES CXX_EXTENSIONS OFF)

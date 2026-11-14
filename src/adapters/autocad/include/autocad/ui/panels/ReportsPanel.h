@@ -268,7 +268,7 @@ protected:
     void PageActivated(int index) override{if(index==0)m_system.RefreshSystems();else if(index==2)m_export.RefreshSystems();}
     afx_msg int OnCreate(LPCREATESTRUCT cs)
     {
-        if(CWnd::OnCreate(cs)==-1)return -1;NetworkSession::InitializeSamples();
+        if(CWnd::OnCreate(cs)==-1)return -1;
         if(!CreateHeader(L"BOQ & Reports",L"PROJECT DELIVERABLES",4700,4701,4699))return -1;
         if(!m_system.CreatePage(this,4801) || !m_summary.CreatePage(this,4802) || !m_export.CreatePage(this,4803))return -1;
         AttachPages({&m_system,&m_summary,&m_export},{L"System Reports",L"Summary",L"Export"});return 0;

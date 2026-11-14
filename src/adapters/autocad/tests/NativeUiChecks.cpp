@@ -67,7 +67,7 @@ public:
             if(!frame.Create(nullptr,L"Network controls QA",WS_OVERLAPPEDWINDOW,CRect(0,0,700,900)))return FALSE;
             frame.SetWindowPos(nullptr,-30000,-30000,700,900,SWP_NOACTIVATE|SWP_NOZORDER|SWP_SHOWWINDOW);
             ProbePage registration;RegisteredNetworksPage registered;SegmentPropertiesPage properties;ReportsContent reports;ProjectInformationPage projectInfo;
-            NetworkSession::InitializeSamples();
+            NetworkSession::Reset();
             if(!registration.CreatePage(&frame,100) || !registered.CreatePage(&frame,101))return FALSE;
             registration.MoveWindow(0,0,540,700);registration.ShowWindow(SW_SHOW);
             registered.MoveWindow(0,0,540,700);registered.ShowWindow(SW_HIDE);
@@ -81,8 +81,11 @@ public:
             fwprintf(log,L"Scroll resize probe: %d resize attempts, %d WM_SIZE messages across 24 wheel events\n",sizingProbe.attempts,sizingProbe.sizeMessages);
 
             CString value;registration.GetDlgItemText(NC_NAME,value);
-            if(value!=L"Supply Network 04")++errors;
-            if(NetworkSession::Drafts().size()!=3)++errors;
+            if(!value.IsEmpty())++errors;
+            if(registration.GetDlgItem(NC_TERMINAL)->IsWindowEnabled() ||
+               registration.GetDlgItem(NC_DAMPER)->IsWindowEnabled() ||
+               registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+            if(!NetworkSession::Drafts().empty())++errors;
             { CClientDC dc(&registration);auto old=dc.SelectObject(registration.GetDlgItem(NC_TITLE)->GetFont());
               wchar_t face[128]={};GetTextFaceW(dc.m_hDC,128,face);fwprintf(log,L"Title font: %s\n",face);dc.SelectObject(old); }
             for(auto probe : {std::pair<UINT,const wchar_t*>{NC_NAME_LABEL,L"Inter"},
@@ -127,6 +130,16 @@ public:
             registration.SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();
             if(registration.ScrollPosition()<=0)++errors;
             Capture(registration,L"registration-bottom.png");
+            // Explicit fixtures for card/search/report checks; product startup remains empty.
+            for(int i=0;i<3;++i)
+            {
+                NetworkDraft fixture;fixture.id=i+1;
+                fixture.name=i==0?L"Supply Network 01":i==1?L"Return Network 01":L"Exhaust Network 01";
+                fixture.system=i==0?L"Supply Air":i==1?L"Return Air":L"Exhaust Air";
+                fixture.segmentCount=L"3";fixture.totalFlow=L"0 CFM";fixture.status=L"Fixture";
+                NetworkSession::Drafts().push_back(fixture);
+            }
+            registered.Rebuild();
             registration.ShowWindow(SW_HIDE);registered.ShowWindow(SW_SHOW);Pump();
             registered.GetDlgItem(6000)->SetFocus();Pump();
             Capture(registered,L"registered-networks.png");
@@ -162,6 +175,21 @@ public:
                 auto setMethod=[&](int row){method->SetCurSel(row);registration.SendMessage(WM_COMMAND,MAKEWPARAM(NC_METHOD,CBN_SELCHANGE),reinterpret_cast<LPARAM>(method->m_hWnd));Pump();};
                 CRect methodBox,target;method->GetWindowRect(&methodBox);registration.GetDlgItem(NC_HEAD)->GetWindowRect(&target);
                 if(target.top<methodBox.bottom || target.top-methodBox.bottom>32)++errors;
+                using namespace dsd::application;
+                const SourcePath root{"QA",L"Ducts",{{0,0},{2000,0}}};
+                DuctNetwork draft;draft.id="NET-001";draft.root=root;draft.lines={root};
+                NetworkSession::Current().network=std::make_unique<DuctNetwork>(
+                    ProjectInfo::Application().prepare_network(draft,{}));
+                registration.SendMessage(WM_DSD_NETWORK_UPDATED);Pump();
+                if(!static_cast<UiButton*>(registration.GetDlgItem(NC_ROOT))->SelectionComplete())++errors;
+                if(!registration.GetDlgItem(NC_TERMINAL)->IsWindowEnabled() ||
+                   !registration.GetDlgItem(NC_DAMPER)->IsWindowEnabled())++errors;
+                NetworkSession::Current().network->air_terminal_block_name=L"Terminal";
+                NetworkSession::Current().network->damper_block_name=L"Damper";
+                registration.SendMessage(WM_DSD_NETWORK_UPDATED);Pump();
+                if(!static_cast<UiButton*>(registration.GetDlgItem(NC_TERMINAL))->SelectionComplete() ||
+                   !static_cast<UiButton*>(registration.GetDlgItem(NC_DAMPER))->SelectionComplete())++errors;
+                registration.SetDlgItemText(NC_NAME,L"Test network");
                 registration.SetDlgItemText(NC_HEAD,L"invalid");setMethod(1);
                 if(visible(NC_HEAD) || !visible(NC_VELOCITY))++errors;
                 registration.SetDlgItemText(NC_VELOCITY,L"1250");registration.SetDlgItemText(NC_ASPECT,L"0.5");
@@ -171,20 +199,16 @@ public:
                 registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();registration.GetDlgItemText(NC_STATUS,value);
                 if(value.Find(L"non-negative")<0)++errors;
                 registration.SetDlgItemText(NC_ROUGHNESS,L"0.15");registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
-                registration.GetDlgItemText(NC_STATUS,value);if(value.Find(L"Form is valid")<0)++errors;
-                registration.SendDlgItemMessage(NC_REGISTER,BM_CLICK);Pump();
-                if(NetworkSession::Drafts().size()!=4 || NetworkSession::Drafts().back().sizingMethod!=L"Velocity" ||
-                    NetworkSession::Drafts().back().velocity!=L"1250" || NetworkSession::Drafts().back().roughness!=L"0.15")++errors;
-                registration.NewDraft();if(!visible(NC_HEAD) || visible(NC_VELOCITY))++errors;
-                registration.LoadDraft(3);if(visible(NC_HEAD) || !visible(NC_VELOCITY))++errors;
-                registration.GetDlgItemText(NC_VELOCITY,value);if(value!=L"1250")++errors;
-                setMethod(0);registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
-                registration.GetDlgItemText(NC_STATUS,value);if(value.Find(L"positive number")<0)++errors;
-                registration.SetDlgItemText(NC_HEAD,L"0.12");setMethod(1);setMethod(0);
-                registration.GetDlgItemText(NC_HEAD,value);if(value!=L"0.12")++errors;
-                registration.SendDlgItemMessage(NC_REGISTER,BM_CLICK);Pump();
-                if(NetworkSession::Drafts().back().headLoss!=L"0.12" || NetworkSession::Drafts().back().sizingMethod!=L"Equal Friction")++errors;
-                NetworkSession::Drafts().pop_back();registration.NewDraft();registration.SetDlgItemText(NC_NAME,L"Supply Network 04");
+                registration.GetDlgItemText(NC_STATUS,value);if(value.Find(L"not implemented")<0)++errors;
+                if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+                registration.SendMessage(WM_COMMAND,MAKEWPARAM(NC_REGISTER,BN_CLICKED),0);Pump();
+                if(NetworkSession::Drafts().size()!=3)++errors;
+                if(NetworkSession::Current().form.velocity!=L"1250")++errors;
+                registration.NewDraft();
+                if(NetworkSession::Current().network || registration.GetDlgItem(NC_TERMINAL)->IsWindowEnabled() ||
+                   registration.GetDlgItem(NC_DAMPER)->IsWindowEnabled() || registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+                if(static_cast<UiButton*>(registration.GetDlgItem(NC_ROOT))->SelectionComplete())++errors;
+                registration.SetDlgItemText(NC_NAME,L"New network");
                 registration.SendMessage(WM_VSCROLL,SB_TOP);Pump();
                 for(UINT id:{NC_NAME,NC_HEAD,NC_ASPECT,NC_ROUGHNESS})
                 {CRect c,w,f;auto* edit=registration.GetDlgItem(id);edit->GetClientRect(&c);edit->GetWindowRect(&w);edit->SendMessage(EM_GETRECT,0,reinterpret_cast<LPARAM>(&f));edit->GetWindowText(value);fwprintf(log,L"Edit %u [%s] client %d,%d format %d,%d,%d,%d window %d,%d\n",id,value.GetString(),c.Width(),c.Height(),f.left,f.top,f.right,f.bottom,w.Width(),w.Height());}
@@ -193,9 +217,9 @@ public:
                 setMethod(1);Pump();Capture(registration,L"network-sizing-velocity.png");setMethod(0);
                 registration.SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();Capture(registration,L"network-sizing-bottom.png");
                 registration.SendMessage(WM_VSCROLL,SB_TOP);Pump();
-                fwprintf(log,L"Network sizing: defaults, conditional fields, method value retention, numeric validation, register/load/reset and material persistence. Errors: %d\n",errors);
+                fwprintf(log,L"Network sizing: defaults, conditional fields, method value retention, numeric validation, root/equipment states, blocked registration, reset and draft settings. Errors: %d\n",errors);
             }
-            fwprintf(log,L"Native controls: 20 scroll/resize cycles, original label positions restored; dark scrollbar drag, track click, wheel and auto-hide; sample data and search checked. Errors: %d\n",errors);
+            fwprintf(log,L"Native controls: 20 scroll/resize cycles, original label positions restored; dark scrollbar drag, track click, wheel and auto-hide; explicit card fixtures and search checked. Errors: %d\n",errors);
             registration.ShowWindow(SW_HIDE);registered.ShowWindow(SW_HIDE);
             if(!properties.CreatePage(&frame,102))++errors;
             else

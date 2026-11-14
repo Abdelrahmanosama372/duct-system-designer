@@ -11,12 +11,7 @@ if(DSD_BUILD_AUTOCAD)
     set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
 endif()
 
-add_subdirectory(src/core)
-add_subdirectory(src/application)
-
-if(DSD_BUILD_AUTOCAD)
-    add_subdirectory(src/adapters/autocad)
-endif()
+add_subdirectory(src)
 
 include(CTest)
 if(BUILD_TESTING)

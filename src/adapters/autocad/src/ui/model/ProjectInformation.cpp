@@ -1,7 +1,7 @@
 #include "autocad/ui/model/ProjectInformation.h"
+#include "autocad/ui/model/ApplicationSession.h"
 
 namespace {
-dsd::application::DsdApplication application;
 
 std::wstring Text(const CString& value) {
     return {value.GetString(), static_cast<std::size_t>(value.GetLength())};
@@ -13,10 +13,10 @@ namespace ProjectInfo
     std::array<CString,Count> draft{},saved{};
     bool editing = true;
 
-    dsd::application::DsdApplication& Application() { return application; }
+    dsd::application::DsdApplication& Application() { return DuctUi::Application(); }
 
     void RegisterProjectInformation() {
-        application.register_project_information({
+        Application().register_project_information({
             .project_name = Text(draft[ProjectName]),
             .project_number = Text(draft[ProjectNumber]),
             .building_name = Text(draft[BuildingName]),
@@ -37,6 +37,6 @@ namespace ProjectInfo
         for (auto& value : draft) value.Empty();
         for (auto& value : saved) value.Empty();
         editing = true;
-        application.clear_project_information();
+        Application().clear_project_information();
     }
 }

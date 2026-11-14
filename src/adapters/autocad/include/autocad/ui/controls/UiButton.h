@@ -4,6 +4,7 @@
 class UiButton : public CButton
 {
     bool m_hover=false, m_primary=false, m_flat=false;
+    bool m_selectionComplete=false;
     UiStyle::ButtonRole m_role=UiStyle::ButtonRole::Secondary;
     CFont m_actionFont;
     COLORREF m_surface=UiStyle::Colors(m_hWnd).background;
@@ -59,6 +60,7 @@ class UiButton : public CButton
             else if(enabled && m_hover)fill=UiStyle::Blend(fill,primary?UiStyle::Colors(m_hWnd).bright:accent,primary?10:12);
             if(!enabled)fill=UiStyle::Colors(m_hWnd).background;
             COLORREF border=m_flat?fill:(!enabled?UiStyle::Colors(m_hWnd).border:(primary||removal||focus?accent:(m_hover?UiStyle::Colors(m_hWnd).muted:UiStyle::Colors(m_hWnd).border)));
+            if(enabled && m_selectionComplete)border=UiStyle::Colors(m_hWnd).green;
             dc.FillSolidRect(rect,surface);
             UiStyle::Rounded(dc,rect,fill,border,UiStyle::Px(m_hWnd,UiStyle::ControlRadius));
             // Filled actions use dark text for contrast; removal keeps a restrained red outline.
@@ -100,6 +102,8 @@ protected:
 public:
     afx_msg void OnEnable(BOOL enabled){CButton::OnEnable(enabled);Invalidate(FALSE);}
     void SetFlat(bool value) {m_flat=value;Invalidate(FALSE);}
+    void SetSelectionComplete(bool value){m_selectionComplete=value;Invalidate(FALSE);}
+    bool SelectionComplete() const{return m_selectionComplete;}
     void SetPrimary(bool value) {m_primary=value;m_role=value?UiStyle::ButtonRole::Primary:UiStyle::ButtonRole::Secondary;Invalidate(FALSE);}
     void SetRole(UiStyle::ButtonRole role){m_role=role;m_primary=role==UiStyle::ButtonRole::Primary;Invalidate(FALSE);}
     UiStyle::ButtonRole Role() const{return m_role;}

@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set "DUCT_CORE_ROOT=%~dp0..\..\..\core"
 set "DUCT_APPLICATION_ROOT=%~dp0..\..\..\application"
 where cl >nul 2>&1
 if errorlevel 1 (
@@ -10,13 +11,14 @@ if not exist "%~dp0..\build-msvc\checks" mkdir "%~dp0..\build-msvc\checks"
 pushd "%~dp0..\build-msvc\checks"
 > sources.rsp (
   echo "%~dp0NativeUiChecks.cpp"
+  for /r "%DUCT_CORE_ROOT%" %%F in (*.cpp) do echo "%%F"
   for /r "%DUCT_APPLICATION_ROOT%\src" %%F in (*.cpp) do echo "%%F"
   for /r "%~dp0..\src\ui\controls" %%F in (*.cpp) do echo "%%F"
   for /r "%~dp0..\src\ui\layout" %%F in (*.cpp) do echo "%%F"
   for /r "%~dp0..\src\ui\model" %%F in (*.cpp) do echo "%%F"
   for /r "%~dp0..\src\ui\panels" %%F in (*.cpp) do echo "%%F"
 )
-cl /nologo /MD /EHsc /std:c++20 /utf-8 /DDUCT_UI_NATIVE_TESTS /D_AFXDLL /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0A00 /D_WIN32_IE=0x0601 /I"%~dp0..\include" /I"%DUCT_APPLICATION_ROOT%\include" @sources.rsp /Fe:DuctUiNativeChecks.exe /link /SUBSYSTEM:WINDOWS comctl32.lib gdiplus.lib uxtheme.lib > build.log 2>&1
+cl /nologo /MD /EHsc /std:c++20 /utf-8 /DDUCT_UI_NATIVE_TESTS /D_AFXDLL /DUNICODE /D_UNICODE /D_WIN32_WINNT=0x0A00 /D_WIN32_IE=0x0601 /I"%~dp0..\include" /I"%DUCT_APPLICATION_ROOT%\include" /I"%DUCT_CORE_ROOT%\ductsystem\include" /I"%DUCT_CORE_ROOT%\geometry\include" /I"%DUCT_CORE_ROOT%\sizing\include" @sources.rsp /Fe:DuctUiNativeChecks.exe /link /SUBSYSTEM:WINDOWS comctl32.lib gdiplus.lib uxtheme.lib > build.log 2>&1
 if errorlevel 1 (
   type build.log
   popd

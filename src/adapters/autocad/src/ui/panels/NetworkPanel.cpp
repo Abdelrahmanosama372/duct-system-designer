@@ -4,6 +4,7 @@
 #endif
 
 BEGIN_MESSAGE_MAP(NetworkRegistrationPage,ScrollPage)
+    ON_MESSAGE(WM_DSD_NETWORK_UPDATED,OnNetworkUpdated)
     ON_WM_CREATE()
 END_MESSAGE_MAP()
 
