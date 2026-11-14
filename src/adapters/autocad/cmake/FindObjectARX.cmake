@@ -7,7 +7,7 @@ find_path(OBJECTARX_X64_INCLUDE_DIR acadi.h PATHS "${OBJECTARX_ROOT}/inc-x64" NO
 find_file(OBJECTARX_DEFINITION_FILE AcRxDefault.def PATHS "${OBJECTARX_ROOT}/inc" NO_DEFAULT_PATH)
 set(_ObjectARX_required OBJECTARX_INCLUDE_DIR OBJECTARX_X64_INCLUDE_DIR OBJECTARX_DEFINITION_FILE)
 set(_ObjectARX_libraries)
-foreach(_library IN ITEMS rxapi acdb26 accore acad adui26 acui26)
+foreach(_library IN ITEMS rxapi acdb26 accore acad adui26 acui26 AcPal)
     find_library(OBJECTARX_${_library}_LIBRARY NAMES ${_library}
         PATHS "${OBJECTARX_ROOT}/lib-x64" NO_DEFAULT_PATH)
     list(APPEND _ObjectARX_required OBJECTARX_${_library}_LIBRARY)

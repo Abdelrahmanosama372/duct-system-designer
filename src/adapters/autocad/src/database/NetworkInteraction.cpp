@@ -94,7 +94,7 @@ std::string ascii(const wchar_t* value) {
 std::wstring wide(const std::string& value) { return {value.begin(), value.end()}; }
 std::string handle(const AcDbObject& object) {
     AcDbHandle value;
-    check(object.getAcDbHandle(value), "Could not read source handle");
+    object.getAcDbHandle(value);
     wchar_t text[32] = {};
     value.getIntoAsciiBuffer(text);
     return ascii(text);
@@ -293,7 +293,7 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
         boundary->setDatabaseDefaults(&database);
         check(boundary->setLayer(layer), "Could not set visualization layer");
         check(boundary->setColorIndex(network.color_index), "Could not set visualization color");
-        check(boundary->setElevation(0.0), "Could not set visualization elevation");
+        boundary->setElevation(0.0);
         AcCmTransparency transparency;
         transparency.setAlpha(128);
         check(boundary->setTransparency(transparency), "Could not set visualization transparency");
@@ -301,7 +301,7 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
             check(boundary->addVertexAt(
                       i, {rectangle.corners[i].x / scale, rectangle.corners[i].y / scale}),
                   "Could not build visualization boundary");
-        check(boundary->setClosed(Adesk::kTrue), "Could not close visualization boundary");
+        boundary->setClosed(Adesk::kTrue);
         AcDbObjectId boundaryId;
         check(owner->appendAcDbEntity(boundaryId, boundary.get()),
               "Could not add visualization boundary");
