@@ -45,5 +45,6 @@ void PropertiesSession::Apply(const Selection& expected,
         throw std::invalid_argument("The selection changed. Select a current visualization again");
     dsd::application::update_network_item_metadata(*session.network, target.type, target.item_id,
                                                    changes);
+    NetworkSession::InvalidateAnalysis();
     notify();
 }

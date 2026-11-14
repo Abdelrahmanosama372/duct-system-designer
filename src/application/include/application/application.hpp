@@ -2,6 +2,7 @@
 
 #include "application/duct_network.hpp"
 #include "application/network_discovery.hpp"
+#include "application/network_analyzer.hpp"
 #include "application/network_segmentor.hpp"
 #include "application/project_information.hpp"
 #include "application/visualization_rectangle_factory.hpp"
@@ -20,12 +21,19 @@ class DsdApplication {
                              const NetworkProcessingOptions& options = {}) const;
     [[nodiscard]] DuctNetwork prepare_network(DuctNetwork draft,
                                               const std::vector<geometry::Block>& blocks) const;
+    [[nodiscard]] NetworkAnalysisResult analyze_network(const DuctNetwork& network) const;
+    void register_network(DuctNetwork network);
+    [[nodiscard]] const std::map<std::string, DuctNetwork>& registered_networks() const noexcept;
+    [[nodiscard]] const DuctNetwork& registered_network(const std::string& id) const;
+    void clear_networks() noexcept;
 
   private:
     NetworkDiscovery network_discovery_;
+    NetworkAnalyzer network_analyzer_;
     NetworkSegmentor network_segmentor_;
     VisualizationRectangleFactory visualization_rectangle_factory_;
     std::optional<ProjectInformation> project_information_;
+    std::map<std::string, DuctNetwork> registered_networks_;
 };
 
 } // namespace dsd::application

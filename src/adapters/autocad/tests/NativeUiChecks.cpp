@@ -138,6 +138,14 @@ public:
                 fixture.name=i==0?L"Supply Network 01":i==1?L"Return Network 01":L"Exhaust Network 01";
                 fixture.system=i==0?L"Supply Air":i==1?L"Return Air":L"Exhaust Air";
                 fixture.segmentCount=L"3";fixture.totalFlow=L"0 CFM";fixture.status=L"Fixture";
+                using namespace dsd::application;
+                DuctNetwork data;data.id=network_item_id("NET",i+1);
+                data.name=std::wstring(fixture.name.GetString());
+                data.root=SourcePath{"Fixture",L"Ducts",{{0,0},{1000,0},{1000,1000},{2000,1000}}};
+                data.lines={*data.root};
+                data=ProjectInfo::Application().prepare_network(data,{});
+                for(auto& segment:data.segmented_lines_infos)segment.metadata={{"width","300"},{"height","200"},{"flow","0"}};
+                ProjectInfo::Application().register_network(data);
                 NetworkSession::Drafts().push_back(fixture);
             }
             registered.Rebuild();
@@ -178,7 +186,8 @@ public:
                 if(target.top<methodBox.bottom || target.top-methodBox.bottom>32)++errors;
                 using namespace dsd::application;
                 const SourcePath root{"QA",L"Ducts",{{0,0},{2000,0}}};
-                DuctNetwork draft;draft.id="NET-001";draft.root=root;draft.lines={root};
+                DuctNetwork draft;draft.id="NET-004";draft.root=root;draft.lines={root};
+                NetworkSession::Current().form.id=4;NetworkSession::NextId()=5;
                 NetworkSession::Current().network=std::make_unique<DuctNetwork>(
                     ProjectInfo::Application().prepare_network(draft,{}));
                 registration.SendMessage(WM_DSD_NETWORK_UPDATED);Pump();
@@ -200,11 +209,55 @@ public:
                 registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();registration.GetDlgItemText(NC_STATUS,value);
                 if(value.Find(L"non-negative")<0)++errors;
                 registration.SetDlgItemText(NC_ROUGHNESS,L"0.15");registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
-                registration.GetDlgItemText(NC_STATUS,value);if(value.Find(L"not implemented")<0)++errors;
+                registration.GetDlgItemText(NC_STATUS,value);if(value.Find(L"DUCT-001")<0)++errors;
                 if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
                 registration.SendMessage(WM_COMMAND,MAKEWPARAM(NC_REGISTER,BN_CLICKED),0);Pump();
                 if(NetworkSession::Drafts().size()!=3)++errors;
                 if(NetworkSession::Current().form.velocity!=L"1250")++errors;
+                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","300"}});
+                registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
+                if(!registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+                NetworkSession::UpdateForm(NetworkSession::Current().form);
+                if(!NetworkSession::CanRegister())++errors;
+                // A changed form value invalidates analysis immediately.
+                registration.SetDlgItemText(NC_VELOCITY,L"1300");Pump();
+                if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+                registration.SetDlgItemText(NC_VELOCITY,L"1250");
+                registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
+                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","400"}});
+                if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+                registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
+                // Selection temporarily blocks Register without changing the analysis.
+                NetworkSession::Current().busy=true;
+                if(NetworkSession::CanRegister())++errors;
+                NetworkSession::Current().busy=false;
+                if(!NetworkSession::CanRegister())++errors;
+                NetworkSession::InvalidateAnalysis();
+                if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
+                registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
+                registration.SendDlgItemMessage(NC_REGISTER,BM_CLICK);Pump();
+                if(NetworkSession::Current().network || NetworkSession::CanRegister())++errors;
+                if(NetworkSession::Drafts().size()!=4 || NetworkSession::Drafts().back().totalFlow!=L"400 CFM")++errors;
+                registration.GetDlgItemText(NC_NAME,value);if(!value.IsEmpty())++errors;
+                registered.Rebuild();registered.GetDlgItemText(NC_COUNT,value);if(value!=L"4 of 4 networks")++errors;
+                // Loading for modification copies geometry and metadata and locks the name.
+                registration.LoadDraft(3);Pump();
+                if(!(registration.GetDlgItem(NC_NAME)->GetStyle()&ES_READONLY) || NetworkSession::CanRegister())++errors;
+                registration.GetDlgItemText(NC_VELOCITY,value);if(value!=L"1250")++errors;
+                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","700"}});
+                if(network_total_flow(ProjectInfo::Application().registered_network("NET-004"))!=400)++errors;
+                registration.NewDraft();
+                if(network_total_flow(ProjectInfo::Application().registered_network("NET-004"))!=400)++errors;
+                registration.LoadDraft(3);Pump();
+                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","800"}});
+                registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
+                registration.SendDlgItemMessage(NC_REGISTER,BM_CLICK);Pump();
+                if(NetworkSession::Drafts().size()!=4 || NetworkSession::Drafts().back().totalFlow!=L"800 CFM")++errors;
+                if(network_total_flow(ProjectInfo::Application().registered_network("NET-004"))!=800)++errors;
+                if(registration.GetDlgItem(NC_NAME)->GetStyle()&ES_READONLY)++errors;
                 registration.NewDraft();
                 if(NetworkSession::Current().network || registration.GetDlgItem(NC_TERMINAL)->IsWindowEnabled() ||
                    registration.GetDlgItem(NC_DAMPER)->IsWindowEnabled() || registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
@@ -218,7 +271,7 @@ public:
                 setMethod(1);Pump();Capture(registration,L"network-sizing-velocity.png");setMethod(0);
                 registration.SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();Capture(registration,L"network-sizing-bottom.png");
                 registration.SendMessage(WM_VSCROLL,SB_TOP);Pump();
-                fwprintf(log,L"Network sizing: defaults, conditional fields, method value retention, numeric validation, root/equipment states, blocked registration, reset and draft settings. Errors: %d\n",errors);
+                fwprintf(log,L"Network sizing: defaults, conditional fields, method value retention, numeric validation, root/equipment states, analysis invalidation, registration, root flow, modification copies and reset. Errors: %d\n",errors);
             }
             fwprintf(log,L"Native controls: 20 scroll/resize cycles, original label positions restored; dark scrollbar drag, track click, wheel and auto-hide; explicit card fixtures and search checked. Errors: %d\n",errors);
             registration.ShowWindow(SW_HIDE);registered.ShowWindow(SW_HIDE);
@@ -305,7 +358,7 @@ public:
                     geometry->GetDlgItemText(DG_REP,value);if(value!=L"Rectangular Hatch")++errors;
                     geometry->GetDlgItemText(DG_REDUCER,value);if(value!=L"300")++errors;
                     auto* networks=static_cast<CComboBox*>(geometry->GetDlgItem(DG_NETWORK));
-                    if(networks->GetCount()!=3)++errors;
+                    if(networks->GetCount()!=4)++errors;
                     if(networks->GetItemHeight(-1)<28 || networks->GetItemHeight(0)<30)++errors;
                     CRect comboRect;networks->GetWindowRect(&comboRect);if(comboRect.Height()<32)++errors;
                     networks->SetCurSel(1);geometry->SendMessage(WM_COMMAND,MAKEWPARAM(DG_NETWORK,CBN_SELCHANGE),reinterpret_cast<LPARAM>(networks->m_hWnd));

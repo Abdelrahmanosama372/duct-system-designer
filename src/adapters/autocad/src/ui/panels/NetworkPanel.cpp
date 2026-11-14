@@ -6,6 +6,7 @@
 BEGIN_MESSAGE_MAP(NetworkRegistrationPage,ScrollPage)
     ON_MESSAGE(WM_DSD_NETWORK_UPDATED,OnNetworkUpdated)
     ON_WM_CREATE()
+    ON_WM_DESTROY()
 END_MESSAGE_MAP()
 
 BEGIN_MESSAGE_MAP(RegisteredNetworksPage,ScrollPage)

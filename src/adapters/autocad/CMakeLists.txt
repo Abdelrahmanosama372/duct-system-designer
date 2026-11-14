@@ -24,7 +24,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 if(NOT TARGET ObjectARX::ObjectARX)
     find_package(ObjectARX REQUIRED)
 endif()
-set(DUCT_UI_OUTPUT_NAME "TestARX15" CACHE STRING "Output ARX filename without extension")
+set(DUCT_UI_OUTPUT_NAME "duct_system_designer" CACHE STRING "Output ARX filename without extension")
+# Update existing build directories that cached the previous default.
+if(DUCT_UI_OUTPUT_NAME STREQUAL "TestARX15")
+    set(DUCT_UI_OUTPUT_NAME "duct_system_designer" CACHE STRING
+        "Output ARX filename without extension" FORCE)
+endif()
 if(NOT OBJECTARX_DEFINITION_FILE)
     set(OBJECTARX_DEFINITION_FILE "${OBJECTARX_ROOT}/inc/AcRxDefault.def")
 endif()
@@ -49,6 +54,7 @@ add_library(DuctSystemDesignerUi MODULE
     src/ui/layout/ScrollPage.cpp
     src/ui/layout/TabbedContent.cpp
     src/ui/model/NetworkSession.cpp
+    src/ui/model/NetworkRegistration.cpp
     src/ui/model/PropertiesSession.cpp
     src/ui/model/NetworkActions.cpp
     src/ui/model/ApplicationSession.cpp
@@ -102,6 +108,7 @@ if(DUCT_UI_BUILD_CHECKS)
     src/ui/layout/ScrollPage.cpp
     src/ui/layout/TabbedContent.cpp
     src/ui/model/NetworkSession.cpp
+    src/ui/model/NetworkRegistration.cpp
     src/ui/model/PropertiesSession.cpp
     src/ui/model/NetworkActions.cpp
     src/ui/model/ApplicationSession.cpp

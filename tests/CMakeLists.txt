@@ -44,6 +44,7 @@ add_executable(application_tests
     application/test_visualization_rectangle_factory.cpp
     application/test_network_processing.cpp
     application/test_network_properties.cpp
+    application/test_network_registration.cpp
 )
 dsd_add_application_sources(application_tests)
 target_link_libraries(application_tests PRIVATE GTest::gtest_main)
