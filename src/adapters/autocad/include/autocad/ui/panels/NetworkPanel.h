@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cwchar>
+#include <stdexcept>
 
 enum NetworkControl : UINT
 {
@@ -23,7 +24,6 @@ void EditNetworkDraft(size_t index);
 
 class NetworkRegistrationPage : public ScrollPage
 {
-    int m_editIndex = -1;
     bool m_loading = true;
     CEdit* m_name = nullptr;
     CComboBox *m_system = nullptr, *m_method = nullptr, *m_material = nullptr;
@@ -61,7 +61,8 @@ class NetworkRegistrationPage : public ScrollPage
         GetDlgItem(NC_ROOT)->EnableWindow(!session.busy);
         for(UINT id:{NC_TERMINAL,NC_DAMPER,NC_REFRESH,NC_ANALYZE})GetDlgItem(id)->EnableWindow(root && !session.busy);
         GetDlgItem(NC_NEW)->EnableWindow(!session.busy);
-        GetDlgItem(NC_REGISTER)->EnableWindow(FALSE); // No analyzer can approve registration yet.
+        GetDlgItem(NC_REGISTER)->EnableWindow(NetworkSession::CanRegister());
+        m_name->SetReadOnly(session.editing_network_id.has_value());
     }
     void UpdateMethod()
     {
@@ -108,7 +109,9 @@ class NetworkRegistrationPage : public ScrollPage
         if (_wtoi(Text(NC_MIN)) > _wtoi(Text(NC_MAX)))
         { Status(L"Minimum dimension must not exceed maximum dimension."); return false; }
         for (size_t i=0;i<NetworkSession::Drafts().size();++i)
-            if (static_cast<int>(i)!=m_editIndex && NetworkSession::Drafts()[i].name.CompareNoCase(Text(NC_NAME))==0)
+            if (!(NetworkSession::Current().editing_network_id &&
+                  NetworkSession::Drafts()[i].id==NetworkSession::Current().form.id) &&
+                NetworkSession::Drafts()[i].name.CompareNoCase(Text(NC_NAME))==0)
             { Status(L"That network name is already registered. Use Modify Network."); return false; }
         return true;
     }
@@ -196,29 +199,41 @@ protected:
         CheckDlgButton(NC_SEGMENTS,BST_CHECKED);
         Control<CButton>(L"Refresh Visualization",BS_PUSHBUTTON,NC_REFRESH);
         Label(NetworkSession::Current().message,NC_STATUS);
-        Label(L"Draft visualization is available. Registration awaits the analyzer.",NC_NOTICE);
+        Label(L"Analyze the network after edits, then register when analysis passes.",NC_NOTICE);
         const UINT sections[]={NC_CONFIG,NC_DEFINITION,NC_SIZING,NC_PARAMETERS,NC_MATERIAL_SECTION,NC_VISUALIZATION};
         for(int i=0;i<6;++i)static_cast<UiHeading*>(GetDlgItem(sections[i]))->SetNumber(i+1);
         static_cast<UiEdit*>(m_name)->SetPlaceholder(L"Enter network name");
         UiStyle::TextColor(*GetDlgItem(NC_NOTICE),UiStyle::ProjectReferenceStyle.muted);
-        m_contentHeight=1612;m_layoutReady=true;LoadForm(NetworkSession::Current().form);return 0;
+        m_contentHeight=1612;m_layoutReady=true;LoadForm(NetworkSession::Current().form);
+        NetworkSession::Attach(m_hWnd);return 0;
     }
     BOOL OnCommand(WPARAM wp, LPARAM lp) override
     {
+        if(m_loading)return ScrollPage::OnCommand(wp,lp);
         const UINT id=LOWORD(wp), code=HIWORD(wp);
         if(id==NC_METHOD && code==CBN_SELCHANGE)UpdateMethod();
         if (code==BN_CLICKED)
         {
             if (id==NC_REGISTER)
             {
-                Status(L"Registration requires successful analysis. Analyzers are not implemented yet.");
+                try {
+                    NetworkSession::UpdateForm(Read());
+                    if(Validate()) {
+                        NetworkSession::RegisterCurrent();
+                        LoadForm(NetworkSession::Current().form);
+                        RefreshNetworkCards();
+                    }
+                } catch(const std::exception& error) { Status(CString(error.what())); }
                 return TRUE;
             }
             if (id==NC_NEW) { NewDraft(); return TRUE; }
             if (id==NC_ANALYZE)
             {
-                if(Validate()) Status(L"Analyzers are not implemented yet. Registration remains unavailable.");
-                return TRUE;
+                try {
+                    NetworkSession::UpdateForm(Read());
+                    if(Validate())NetworkSession::AnalyzeCurrent();
+                } catch(const std::exception& error) { Status(CString(error.what())); }
+                UpdateSelectionState();return TRUE;
             }
             if(id==NC_ROOT || id==NC_TERMINAL || id==NC_DAMPER || id==NC_REFRESH)
             {
@@ -234,7 +249,7 @@ protected:
             code==CBN_EDITCHANGE || (code==BN_CLICKED && id>=NC_SEGMENTS && id<=NC_DIMENSIONS)))
         {
             NetworkSession::UpdateForm(Read());
-            Status(L"Draft settings changed. Registration awaits the analyzer.");
+            UpdateSelectionState();Status(NetworkSession::Current().message);
         }
         return ScrollPage::OnCommand(wp,lp);
     }
@@ -242,10 +257,10 @@ public:
     void LoadDraft(size_t index)
     {
         if(index>=NetworkSession::Drafts().size())return;
-        m_editIndex=static_cast<int>(index);
-        NetworkSession::ResetDraft();
-        NetworkSession::UpdateForm(NetworkSession::Drafts()[index]);
-        LoadForm(NetworkSession::Current().form);
+        try {
+            NetworkSession::EditRegistered(index);
+            LoadForm(NetworkSession::Current().form);
+        } catch(const std::exception& error) { Status(CString(error.what())); }
     }
     void LoadForm(const NetworkDraft& draft)
     {
@@ -267,9 +282,10 @@ public:
     void NewDraft()
     {
         if(NetworkSession::Current().busy)return;
-        NetworkSession::ResetDraft();m_editIndex=-1;
+        NetworkSession::ResetDraft();
         LoadForm(NetworkSession::Current().form);m_name->SetFocus();
     }
+    afx_msg void OnDestroy() { NetworkSession::Detach(m_hWnd);ScrollPage::OnDestroy(); }
     afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM)
     {
         UpdateSelectionState();Status(NetworkSession::Current().message);return 0;
@@ -429,7 +445,7 @@ public:
                 if(i<2)card->values[i].SetFont(&m_value);
                 UiStyle::TextColor(card->headings[i],UiStyle::Colors(m_hWnd).muted);
                 UiStyle::TextColor(card->values[i],i==2?
-                    (draft.status==L"Analyzed"?UiStyle::Colors(m_hWnd).success:UiStyle::Colors(m_hWnd).amber):UiStyle::Colors(m_hWnd).bright);
+                    ((draft.status==L"Analyzed" || draft.status==L"Registered")?UiStyle::Colors(m_hWnd).success:UiStyle::Colors(m_hWnd).amber):UiStyle::Colors(m_hWnd).bright);
             }
             CardControl(card->modify,L"Modify Network",WS_TABSTOP|BS_PUSHBUTTON,8000+static_cast<UINT>(index));
             CardControl(card->divider,L"",SS_ETCHEDHORZ,0);

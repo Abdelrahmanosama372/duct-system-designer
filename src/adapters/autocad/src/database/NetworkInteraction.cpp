@@ -458,13 +458,14 @@ void Autocad::Network::ExecutePendingAction() {
         if (!session.network)
             session.form.id = NetworkSession::NextId()++;
         session.network = std::move(prepared);
+        NetworkSession::InvalidateAnalysis();
         PropertiesSession::Clear();
         NetworkSession::UpdateForm(session.form);
         session.form.segmentCount.Format(L"%zu", session.network->segmented_lines_infos.size());
         session.form.totalFlow = L"0 CFM";
         session.form.status = L"Draft";
         session.message.Format(L"Draft %hs: %zu ducts, %zu air terminals, %zu "
-                               L"dampers. Registration awaits the analyzer.",
+                               L"dampers. Analyze the network before registering.",
                                session.network->id.c_str(),
                                session.network->segmented_lines_infos.size(),
                                session.network->air_terminal_blocks_infos.size(),

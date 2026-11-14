@@ -49,6 +49,7 @@ add_library(DuctSystemDesignerUi MODULE
     src/ui/layout/ScrollPage.cpp
     src/ui/layout/TabbedContent.cpp
     src/ui/model/NetworkSession.cpp
+    src/ui/model/NetworkRegistration.cpp
     src/ui/model/PropertiesSession.cpp
     src/ui/model/NetworkActions.cpp
     src/ui/model/ApplicationSession.cpp
@@ -102,6 +103,7 @@ if(DUCT_UI_BUILD_CHECKS)
     src/ui/layout/ScrollPage.cpp
     src/ui/layout/TabbedContent.cpp
     src/ui/model/NetworkSession.cpp
+    src/ui/model/NetworkRegistration.cpp
     src/ui/model/PropertiesSession.cpp
     src/ui/model/NetworkActions.cpp
     src/ui/model/ApplicationSession.cpp

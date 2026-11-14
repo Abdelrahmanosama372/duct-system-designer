@@ -63,8 +63,8 @@ struct NetworkProcessingOptions {
     double minimum_segment_length_mm = 100;
 };
 
-// The UI owns this draft. Processing services return values and never retain
-// it.
+// The UI owns unregistered/editing copies; the application owns registered
+// snapshots. Processing services return values without retaining drafts.
 struct DuctNetwork {
     std::string id;
     std::wstring name;
