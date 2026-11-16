@@ -87,17 +87,37 @@ Metadata read_network_item_metadata(const DuctNetwork& network, NetworkItemType 
 }
 void update_network_item_metadata(DuctNetwork& network, NetworkItemType type,
                                   const std::string& item_id, const Metadata& changes) {
-    auto& stored = metadata(network, type, item_id);
-    auto updated = stored;
-    for (const auto& [key, value] : changes)
-        updated[key] = value;
-    validate(type, updated);
+    update_network_items_metadata(network, type, {item_id}, changes);
+}
+void update_network_items_metadata(DuctNetwork& network, NetworkItemType type,
+                                   const std::vector<std::string>& item_ids,
+                                   const Metadata& changes) {
+    if (item_ids.empty())
+        throw std::invalid_argument("Select at least one network item");
+    struct Update {
+        Metadata* stored;
+        Metadata replacement;
+    };
+    std::map<std::string, Update> updates;
+    for (const auto& id : item_ids) {
+        if (updates.contains(id))
+            continue;
+        auto& stored = metadata(network, type, id);
+        auto replacement = stored;
+        for (const auto& [key, value] : changes)
+            replacement[key] = value;
+        validate(type, replacement);
+        updates.emplace(id, Update{&stored, std::move(replacement)});
+    }
     // Prepare all allocating work before changing the network.
     auto updated_rectangles = rectangles(network, type);
-    for (auto& rectangle : updated_rectangles)
-        if (rectangle.item_id == item_id)
-            rectangle.metadata = updated;
-    stored.swap(updated);
+    for (auto& rectangle : updated_rectangles) {
+        const auto found = updates.find(rectangle.item_id);
+        if (found != updates.end())
+            rectangle.metadata = found->second.replacement;
+    }
+    for (auto& [id, update] : updates)
+        update.stored->swap(update.replacement);
     rectangles(network, type).swap(updated_rectangles);
 }
 } // namespace dsd::application

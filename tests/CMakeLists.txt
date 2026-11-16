@@ -45,6 +45,7 @@ add_executable(application_tests
     application/test_visualization_text_factory.cpp
     application/test_network_processing.cpp
     application/test_network_properties.cpp
+    application/test_network_batch_properties.cpp
     application/test_network_registration.cpp
 )
 dsd_add_application_sources(application_tests)

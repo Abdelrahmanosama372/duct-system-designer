@@ -9,6 +9,24 @@ using namespace dsd::application;
 CString wide(const std::string& value) {
     return CString(std::wstring(value.begin(), value.end()).c_str());
 }
+CString selected_ids(const PropertiesSession::Selection& selection) {
+    CString result;
+    for (const auto& id : selection.item_ids) {
+        if (!result.IsEmpty())
+            result += L" - ";
+        result += wide(id);
+    }
+    return result;
+}
+CString selection_note(const PropertiesSession::Selection& selection) {
+    if (selection.item_ids.size() == 1)
+        return L"Changes are saved to the current network draft when you click Apply Changes.";
+    CString note;
+    note.Format(
+        L"Showing values from %s. Apply uses all displayed values for all %zu selected items.",
+        wide(selection.item_ids.front()).GetString(), selection.item_ids.size());
+    return note;
+}
 CString text(CWnd& page, UINT id) {
     CString value;
     page.GetDlgItemText(id, value);
@@ -59,7 +77,7 @@ std::pair<std::string, std::string> neck(const CString& value) {
     return {narrow(width), narrow(height)};
 }
 constexpr const wchar_t* emptySelection =
-    L"Select one current visualization boundary or hatch in the drawing.";
+    L"Select current visualization boundaries or hatches of one type in the drawing.";
 } // namespace
 
 void SegmentPropertiesPage::LayoutContent() {
@@ -94,9 +112,9 @@ int SegmentPropertiesPage::OnCreate(LPCREATESTRUCT cs) {
     static_cast<UiHeading*>(GetDlgItem(PC_DATA_SECTION))->SetNumber(2);
     Label(L"Segment properties", PC_TITLE, true).SetFont(&m_title);
     static_cast<UiHeading*>(GetDlgItem(PC_TITLE))->SetPlainTitle();
-    Label(L"Adjust flow and dimensions for the selected duct segment.", PC_SUBTITLE);
+    Label(L"Adjust flow and dimensions for the selected duct segments.", PC_SUBTITLE);
     UiStyle::TextColor(*GetDlgItem(PC_SUBTITLE), UiStyle::ProjectReferenceStyle.muted);
-    Label(L"Selected segment:", PC_SEGMENT_LABEL);
+    Label(L"Selected segments:", PC_SEGMENT_LABEL);
     Control<CEdit>(L"", ES_READONLY | ES_AUTOHSCROLL, PC_SEGMENT);
     Label(L"Network name:", PC_NETWORK_LABEL);
     Control<CEdit>(L"", ES_READONLY | ES_AUTOHSCROLL, PC_NETWORK);
@@ -122,17 +140,15 @@ void SegmentPropertiesPage::LoadSelection() {
     const auto snapshot = PropertiesSession::Read();
     const bool active = snapshot && snapshot->selection.type == NetworkItemType::Segment;
     m_selection = active ? std::optional{snapshot->selection} : std::nullopt;
-    SetDlgItemText(PC_SEGMENT, active ? wide(snapshot->selection.item_id) : CString());
+    SetDlgItemText(PC_SEGMENT, active ? selected_ids(snapshot->selection) : CString());
     SetDlgItemText(PC_NETWORK, active ? CString(snapshot->network_name.c_str()) : CString());
     SetDlgItemText(PC_FLOW, active ? wide(snapshot->metadata.at("flow")) : CString());
     set_combo(*this, PC_WIDTH, active ? wide(snapshot->metadata.at("width")) : CString());
     set_combo(*this, PC_HEIGHT, active ? wide(snapshot->metadata.at("height")) : CString());
     for (UINT id : {PC_FLOW, PC_WIDTH, PC_HEIGHT, PC_APPLY})
         GetDlgItem(id)->EnableWindow(active);
-    SetDlgItemText(
-        PC_STATUS,
-        active ? L"Changes are saved to the current network draft when you click Apply Changes."
-               : emptySelection);
+    SetDlgItemText(PC_STATUS,
+                   active ? selection_note(snapshot->selection) : CString(emptySelection));
 }
 BOOL SegmentPropertiesPage::OnCommand(WPARAM wp, LPARAM lp) {
     if (LOWORD(wp) == PC_APPLY && HIWORD(wp) == BN_CLICKED) {
@@ -185,11 +201,11 @@ int EquipmentPropertiesPage::OnCreate(LPCREATESTRUCT cs) {
     Label(m_damper ? L"Damper properties" : L"Air terminal properties", EP_TITLE, true)
         .SetFont(&m_title);
     static_cast<UiHeading*>(GetDlgItem(EP_TITLE))->SetPlainTitle();
-    Label(m_damper ? L"Adjust details for the selected damper."
-                   : L"Adjust flow and sizes for the selected air terminal.",
+    Label(m_damper ? L"Adjust details for the selected dampers."
+                   : L"Adjust flow and sizes for the selected air terminals.",
           EP_SUBTITLE);
     UiStyle::TextColor(*GetDlgItem(EP_SUBTITLE), UiStyle::ProjectReferenceStyle.muted);
-    Label(m_damper ? L"Selected damper:" : L"Selected air terminal:", EP_SELECTED_LABEL);
+    Label(m_damper ? L"Selected dampers:" : L"Selected air terminals:", EP_SELECTED_LABEL);
     Control<CEdit>(L"", ES_READONLY | ES_AUTOHSCROLL, EP_SELECTED);
     Label(L"Network name:", EP_NETWORK_LABEL);
     Control<CEdit>(L"", ES_READONLY | ES_AUTOHSCROLL, EP_NETWORK);
@@ -230,7 +246,7 @@ void EquipmentPropertiesPage::LoadSelection() {
     const auto type = m_damper ? NetworkItemType::Damper : NetworkItemType::AirTerminal;
     const bool active = snapshot && snapshot->selection.type == type;
     m_selection = active ? std::optional{snapshot->selection} : std::nullopt;
-    SetDlgItemText(EP_SELECTED, active ? wide(snapshot->selection.item_id) : CString());
+    SetDlgItemText(EP_SELECTED, active ? selected_ids(snapshot->selection) : CString());
     SetDlgItemText(EP_NETWORK, active ? CString(snapshot->network_name.c_str()) : CString());
     if (m_damper) {
         set_combo(*this, EP_FIRST, active ? wide(snapshot->metadata.at("damper_type")) : CString());
@@ -254,10 +270,8 @@ void EquipmentPropertiesPage::LoadSelection() {
         GetDlgItem(id)->EnableWindow(active);
     if (m_damper)
         GetDlgItem(EP_FOURTH)->EnableWindow(active);
-    SetDlgItemText(
-        EP_STATUS,
-        active ? L"Changes are saved to the current network draft when you click Apply Changes."
-               : emptySelection);
+    SetDlgItemText(EP_STATUS,
+                   active ? selection_note(snapshot->selection) : CString(emptySelection));
 }
 BOOL EquipmentPropertiesPage::OnCommand(WPARAM wp, LPARAM lp) {
     if (LOWORD(wp) == EP_APPLY && HIWORD(wp) == BN_CLICKED) {

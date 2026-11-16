@@ -115,14 +115,17 @@ class SelectionWindow final : public CWnd {
                 PropertiesSession::Clear();
                 return 0;
             }
-            // PICKSTYLE can select an associative hatch and its boundary together.
-            // They are one editable item; selections spanning different items are ignored.
+            std::vector<std::string> item_ids;
+            // All visuals must belong to the current network and one item type.
+            // The session deduplicates boundary/hatch pairs, preserving first-item order.
             for (const auto id : ids) {
                 const auto other = Autocad::Network::ResolveCurrentVisualization(id);
-                if (!other || other->visualization_id != identity->visualization_id) {
+                if (!other || other->network_id != identity->network_id ||
+                    other->type != identity->type) {
                     PropertiesSession::Clear();
                     return 0;
                 }
+                item_ids.emplace_back(other->item_id.begin(), other->item_id.end());
             }
             using dsd::application::NetworkItemType;
             const auto type = identity->type == L"segment"        ? NetworkItemType::Segment
@@ -130,7 +133,7 @@ class SelectionWindow final : public CWnd {
                                                                   : NetworkItemType::Damper;
             PropertiesSession::Select(
                 {std::string(identity->network_id.begin(), identity->network_id.end()),
-                 std::string(identity->item_id.begin(), identity->item_id.end()), type});
+                 std::move(item_ids), type});
             DuctUi::Show(DuctUi::Panel::Properties);
         } catch (const std::exception&) {
             PropertiesSession::Clear();

@@ -6,7 +6,7 @@ inline constexpr UINT WM_DSD_PROPERTIES_UPDATED = WM_APP + 85;
 namespace PropertiesSession {
 struct Selection {
     std::string network_id;
-    std::string item_id;
+    std::vector<std::string> item_ids; // First item supplies the displayed values.
     dsd::application::NetworkItemType type;
 };
 struct Snapshot {

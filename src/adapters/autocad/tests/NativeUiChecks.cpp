@@ -231,8 +231,8 @@ public:
                 registration.SendMessage(WM_COMMAND,MAKEWPARAM(NC_REGISTER,BN_CLICKED),0);Pump();
                 if(NetworkSession::Drafts().size()!=3)++errors;
                 if(NetworkSession::Current().form.velocity!=L"1250")++errors;
-                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
-                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","300"}});
+                PropertiesSession::Select({"NET-004",{"DUCT-001"},NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004",{"DUCT-001"},NetworkItemType::Segment},{{"flow","300"}});
                 registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
                 if(!registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
                 NetworkSession::UpdateForm(NetworkSession::Current().form);
@@ -242,8 +242,8 @@ public:
                 if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
                 registration.SetDlgItemText(NC_VELOCITY,L"1250");
                 registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
-                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
-                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","400"}});
+                PropertiesSession::Select({"NET-004",{"DUCT-001"},NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004",{"DUCT-001"},NetworkItemType::Segment},{{"flow","400"}});
                 if(registration.GetDlgItem(NC_REGISTER)->IsWindowEnabled())++errors;
                 registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
                 // Selection temporarily blocks Register without changing the analysis.
@@ -263,14 +263,14 @@ public:
                 registration.LoadDraft(3);Pump();
                 if(!(registration.GetDlgItem(NC_NAME)->GetStyle()&ES_READONLY) || NetworkSession::CanRegister())++errors;
                 registration.GetDlgItemText(NC_VELOCITY,value);if(value!=L"1250")++errors;
-                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
-                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","700"}});
+                PropertiesSession::Select({"NET-004",{"DUCT-001"},NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004",{"DUCT-001"},NetworkItemType::Segment},{{"flow","700"}});
                 if(network_total_flow(ProjectInfo::Application().registered_network("NET-004"))!=400)++errors;
                 registration.NewDraft();
                 if(network_total_flow(ProjectInfo::Application().registered_network("NET-004"))!=400)++errors;
                 registration.LoadDraft(3);Pump();
-                PropertiesSession::Select({"NET-004","DUCT-001",NetworkItemType::Segment});
-                PropertiesSession::Apply({"NET-004","DUCT-001",NetworkItemType::Segment},{{"flow","800"}});
+                PropertiesSession::Select({"NET-004",{"DUCT-001"},NetworkItemType::Segment});
+                PropertiesSession::Apply({"NET-004",{"DUCT-001"},NetworkItemType::Segment},{{"flow","800"}});
                 registration.SendDlgItemMessage(NC_ANALYZE,BM_CLICK);Pump();
                 registration.SendDlgItemMessage(NC_REGISTER,BM_CLICK);Pump();
                 if(NetworkSession::Drafts().size()!=4 || NetworkSession::Drafts().back().totalFlow!=L"800 CFM")++errors;
@@ -296,11 +296,13 @@ public:
             {
                 using namespace dsd::application;
                 auto draft=DuctNetwork{};draft.id="NET-QA";draft.name=L"Properties QA";
-                draft.root=SourcePath{"QA",L"Ducts",{{0,0},{3000,0}}};draft.lines={*draft.root};
+                draft.root=SourcePath{"QA",L"Ducts",{{0,0},{10000,0}}};draft.lines={*draft.root};
                 draft.air_terminal_block_name=L"Terminal";draft.damper_block_name=L"Damper";
                 const std::vector<dsd::geometry::Block> blocks{
-                    {"T",L"Terminal",{1000,0},{{980,-10},{1020,10}}},
-                    {"D",L"Damper",{2000,0},{{1980,-10},{2020,10}}}};
+                    {"T",L"Terminal",{2000,0},{{1980,-10},{2020,10}}},
+                    {"T2",L"Terminal",{4000,0},{{3980,-10},{4020,10}}},
+                    {"D",L"Damper",{6000,0},{{5980,-10},{6020,10}}},
+                    {"D2",L"Damper",{8000,0},{{7980,-10},{8020,10}}}};
                 NetworkSession::Current().network=std::make_unique<DuctNetwork>(
                     ProjectInfo::Application().prepare_network(draft,blocks));
                 NetworkActions::SetHandler(CaptureLabelRefresh);
@@ -314,7 +316,7 @@ public:
                     CWnd* terminal=content.GetDlgItem(3802);
                     CWnd* damper=content.GetDlgItem(3803);
                     if(segment->GetDlgItem(PC_APPLY)->IsWindowEnabled())++errors;
-                    PropertiesSession::Select({"NET-QA","DUCT-001",NetworkItemType::Segment});Pump();
+                    PropertiesSession::Select({"NET-QA",{"DUCT-001"},NetworkItemType::Segment});Pump();
                     if(tabs->GetCurSel()!=0)++errors;
                     segment->GetDlgItemText(PC_FLOW,value);if(value!=L"0")++errors;
                     segment->GetDlgItemText(PC_WIDTH,value);if(value!=L"AC")++errors;
@@ -323,14 +325,14 @@ public:
                     if(PropertiesSession::Read() || segment->GetDlgItem(PC_APPLY)->IsWindowEnabled() || tabs->GetCurSel()!=0)++errors;
                     segment->GetDlgItemText(PC_SEGMENT,value);if(!value.IsEmpty())++errors;
                     if(propertyFinishRequests!=1 || labelRefreshRequests!=0)++errors;
-                    PropertiesSession::Select({"NET-QA","DUCT-001",NetworkItemType::Segment});Pump();
+                    PropertiesSession::Select({"NET-QA",{"DUCT-001"},NetworkItemType::Segment});Pump();
                     segment->SetDlgItemText(PC_FLOW,L"-1");segment->SendDlgItemMessage(PC_APPLY,BM_CLICK);Pump();
                     if(!PropertiesSession::Read() || !segment->GetDlgItem(PC_APPLY)->IsWindowEnabled())++errors;
                     segment->GetDlgItemText(PC_FLOW,value);if(value!=L"-1")++errors;
                     if(propertyFinishRequests!=1)++errors;
                     if(NetworkSession::Current().network->segmented_lines_infos.front().metadata.at("flow")!="350.5")++errors;
                     segment->SetDlgItemText(PC_FLOW,L"999");
-                    PropertiesSession::Select({"NET-QA","AT-001",NetworkItemType::AirTerminal});Pump();
+                    PropertiesSession::Select({"NET-QA",{"AT-001"},NetworkItemType::AirTerminal});Pump();
                     if(tabs->GetCurSel()!=1)++errors;
                     terminal->GetDlgItemText(EP_SECOND,value);if(value!=L"none")++errors;
                     terminal->SetDlgItemText(EP_FIRST,L"250");terminal->SetDlgItemText(EP_SECOND,L"200 x 150");
@@ -339,7 +341,7 @@ public:
                     if(terminalValues.at("width")!="200" || terminalValues.at("height")!="150" || terminalValues.at("face_size")!="300 x 300")++errors;
                     if(PropertiesSession::Read() || terminal->GetDlgItem(EP_APPLY)->IsWindowEnabled() || tabs->GetCurSel()!=1)++errors;
                     Capture(content,L"properties-air-terminals.png");
-                    PropertiesSession::Select({"NET-QA","VCD-001",NetworkItemType::Damper});Pump();
+                    PropertiesSession::Select({"NET-QA",{"VCD-001"},NetworkItemType::Damper});Pump();
                     if(tabs->GetCurSel()!=2)++errors;
                     damper->GetDlgItemText(EP_THIRD,value);if(value!=L"AC")++errors;
                     auto* types=static_cast<CComboBox*>(damper->GetDlgItem(EP_FIRST));types->SetCurSel(types->FindStringExact(-1,L"Fire Damper"));
@@ -349,11 +351,54 @@ public:
                     if(PropertiesSession::Read() || damper->GetDlgItem(EP_APPLY)->IsWindowEnabled() || tabs->GetCurSel()!=2)++errors;
                     if(propertyFinishRequests!=3 || labelRefreshRequests!=0)++errors;
                     Capture(content,L"properties-dampers.png");
-                    PropertiesSession::Select({"NET-QA","DUCT-001",NetworkItemType::Segment});Pump();
+                    PropertiesSession::Select({"NET-QA",{"DUCT-001"},NetworkItemType::Segment});Pump();
                     segment->GetDlgItemText(PC_FLOW,value);if(value!=L"350.5")++errors;
                     Capture(content,L"properties-preview.png");
                     for(int i=0;i<12;++i){content.MoveWindow(0,0,i%2?540:460,i%2?740:340);segment->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();segment->SendMessage(WM_VSCROLL,SB_TOP);Pump();}
-                    const PropertiesSession::Selection stale{"NET-QA","DUCT-001",NetworkItemType::Segment};
+                    // Batch selections retain the first item's values and deduplicate IDs.
+                    auto& batch=*NetworkSession::Current().network;
+                    update_network_item_metadata(batch,NetworkItemType::Segment,"DUCT-002",{{"flow","120"},{"width","300"},{"height","200"}});
+                    PropertiesSession::Select({"NET-QA",{"DUCT-002","DUCT-001","DUCT-002"},NetworkItemType::Segment});Pump();
+                    segment->GetDlgItemText(PC_SEGMENT,value);if(value!=L"DUCT-002 - DUCT-001")++errors;
+                    segment->GetDlgItemText(PC_FLOW,value);if(value!=L"120")++errors;
+                    segment->GetDlgItemText(PC_STATUS,value);if(value.Find(L"DUCT-002")<0 || value.Find(L"2 selected")<0)++errors;
+                    segment->SetDlgItemText(PC_FLOW,L"600");segment->SendDlgItemMessage(PC_APPLY,BM_CLICK);Pump();
+                    for(const auto id:{"DUCT-001","DUCT-002"}) {
+                        const auto values=read_network_item_metadata(batch,NetworkItemType::Segment,id);
+                        if(values.at("flow")!="600" || values.at("width")!="300" || values.at("height")!="200")++errors;
+                    }
+                    if(PropertiesSession::Read() || propertyFinishRequests!=4 || tabs->GetCurSel()!=0)++errors;
+                    update_network_item_metadata(batch,NetworkItemType::AirTerminal,"AT-002",{{"flow","150"},{"width","225"},{"height","175"},{"face_size","400 x 400"}});
+                    PropertiesSession::Select({"NET-QA",{"AT-002","AT-001","AT-001"},NetworkItemType::AirTerminal});Pump();
+                    terminal->GetDlgItemText(EP_SELECTED,value);if(value!=L"AT-002 - AT-001")++errors;
+                    terminal->GetDlgItemText(EP_SECOND,value);if(value!=L"225 x 175")++errors;
+                    terminal->SetDlgItemText(EP_FIRST,L"300");terminal->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
+                    for(const auto id:{"AT-001","AT-002"}) {
+                        const auto values=read_network_item_metadata(batch,NetworkItemType::AirTerminal,id);
+                        if(values.at("flow")!="300" || values.at("width")!="225" || values.at("height")!="175" || values.at("face_size")!="400 x 400")++errors;
+                    }
+                    if(PropertiesSession::Read() || propertyFinishRequests!=5 || tabs->GetCurSel()!=1)++errors;
+                    update_network_item_metadata(batch,NetworkItemType::Damper,"VCD-002",{{"damper_type","Smoke Damper"},{"blade_arrangement","Opposed Blade"},{"width","600"},{"height","350"}});
+                    PropertiesSession::Select({"NET-QA",{"VCD-002","VCD-001"},NetworkItemType::Damper});Pump();
+                    damper->GetDlgItemText(EP_SELECTED,value);if(value!=L"VCD-002 - VCD-001")++errors;
+                    damper->SetDlgItemText(EP_THIRD,L"750");damper->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
+                    for(const auto id:{"VCD-001","VCD-002"}) {
+                        const auto values=read_network_item_metadata(batch,NetworkItemType::Damper,id);
+                        if(values.at("damper_type")!="Smoke Damper" || values.at("blade_arrangement")!="Opposed Blade" || values.at("width")!="750" || values.at("height")!="350")++errors;
+                    }
+                    if(PropertiesSession::Read() || propertyFinishRequests!=6 || labelRefreshRequests!=0 || tabs->GetCurSel()!=2)++errors;
+                    PropertiesSession::Select({"NET-QA",{"AT-001","AT-002"},NetworkItemType::AirTerminal});Pump();
+                    terminal->SetDlgItemText(EP_FIRST,L"-1");terminal->SendDlgItemMessage(EP_APPLY,BM_CLICK);Pump();
+                    if(!PropertiesSession::Read() || PropertiesSession::Read()->selection.item_ids.size()!=2 || propertyFinishRequests!=6)++errors;
+                    if(batch.air_terminal_blocks_infos[0].metadata.at("flow")!="300" || batch.air_terminal_blocks_infos[1].metadata.at("flow")!="300")++errors;
+                    PropertiesSession::Select({"NET-QA",{"DUCT-001","DUCT-002"},NetworkItemType::Segment});
+                    const auto previous=*PropertiesSession::Read();
+                    PropertiesSession::Select({"NET-QA",{"DUCT-001","DUCT-003"},NetworkItemType::Segment});
+                    try{PropertiesSession::Apply(previous.selection,{{"flow","999"}});++errors;}catch(const std::invalid_argument&){}
+                    if(batch.segmented_lines_infos[0].metadata.at("flow")!="600" || batch.segmented_lines_infos[2].metadata.at("flow")!="0")++errors;
+                    PropertiesSession::Select({"NET-QA",{},NetworkItemType::Segment});
+                    if(PropertiesSession::Read() || segment->GetDlgItem(PC_APPLY)->IsWindowEnabled())++errors;
+                    const PropertiesSession::Selection stale{"NET-QA",{"DUCT-001"},NetworkItemType::Segment};
                     NetworkSession::ResetDraft();Pump();
                     if(segment->GetDlgItem(PC_APPLY)->IsWindowEnabled())++errors;
                     try{PropertiesSession::Apply(stale,{{"flow","123"}});++errors;}catch(const std::invalid_argument&){}
