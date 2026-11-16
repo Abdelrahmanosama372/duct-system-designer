@@ -10,6 +10,7 @@
 
 namespace {
 constexpr UINT selectionChanged = WM_APP + 86;
+constexpr UINT propertyApplyCompleted = WM_APP + 87;
 struct ImpliedSelection {
     ads_name entities;
     bool acquired = false;
@@ -26,6 +27,7 @@ struct ImpliedSelection {
 };
 class SelectionWindow final : public CWnd {
     bool queued = false;
+    AcApDocument* completionDocument = nullptr;
 
   public:
     void Schedule() {
@@ -34,8 +36,52 @@ class SelectionWindow final : public CWnd {
             PostMessage(selectionChanged);
         }
     }
+    void CompleteApply() {
+        completionDocument = acDocManager->mdiActiveDocument();
+        ResumeCompletion();
+    }
+    void ResumeCompletion() {
+        if (m_hWnd && completionDocument)
+            PostMessage(propertyApplyCompleted);
+    }
 
   protected:
+    afx_msg LRESULT OnPropertyApplyCompleted(WPARAM, LPARAM) {
+        auto* document = completionDocument;
+        auto& session = NetworkSession::Current();
+        if (!document || document != acDocManager->mdiActiveDocument() || session.busy) {
+            completionDocument = nullptr;
+            return 0;
+        }
+        resbuf active{};
+        if (acedGetVar(L"CMDACTIVE", &active) != RTNORM) {
+            completionDocument = nullptr;
+            return 0;
+        }
+        // A nested command can keep AutoCAD active after this message is posted.
+        // Its completion notification will schedule another attempt at idle.
+        if (active.resval.rint != 0)
+            return 0;
+        completionDocument = nullptr;
+        // This message runs after the queued drawing command, when clearing the
+        // pickfirst set is permitted. Temporarily allow the palette to release focus.
+        session.busy = true;
+        try {
+            if (acedSSSetFirst(nullptr, nullptr) != RTNORM)
+                acutPrintf(L"\nCould not clear the drawing selection after Apply.");
+            PropertiesSession::Clear();
+            auto* view = acedGetAcadDwgView();
+            if (view && ::IsWindow(view->GetSafeHwnd()))
+                view->SetFocus();
+        } catch (CException* error) {
+            error->Delete();
+        } catch (const std::exception& error) {
+            acutPrintf(L"\n%hs", error.what());
+        }
+        session.busy = false;
+        NetworkSession::Notify();
+        return 0;
+    }
     afx_msg LRESULT OnSelectionChanged(WPARAM, LPARAM) {
         queued = false;
         // The reactor only schedules work. Selection reading and UI navigation
@@ -98,11 +144,15 @@ class SelectionWindow final : public CWnd {
 };
 BEGIN_MESSAGE_MAP(SelectionWindow, CWnd)
 ON_MESSAGE(selectionChanged, OnSelectionChanged)
+ON_MESSAGE(propertyApplyCompleted, OnPropertyApplyCompleted)
 END_MESSAGE_MAP()
 SelectionWindow window;
 bool initialized = false;
 class EditorReactor final : public AcEditorReactor {
     void pickfirstModified() override { window.Schedule(); }
+    void commandEnded(const ACHAR*) override { window.ResumeCompletion(); }
+    void commandCancelled(const ACHAR*) override { window.ResumeCompletion(); }
+    void commandFailed(const ACHAR*) override { window.ResumeCompletion(); }
 };
 EditorReactor editorReactor;
 class DocumentReactor final : public AcApDocManagerReactor {
@@ -134,3 +184,4 @@ void Autocad::VisualizationSelection::Shutdown() {
         window.DestroyWindow();
     PropertiesSession::Clear();
 }
+void Autocad::VisualizationSelection::CompletePropertyApply() { window.CompleteApply(); }

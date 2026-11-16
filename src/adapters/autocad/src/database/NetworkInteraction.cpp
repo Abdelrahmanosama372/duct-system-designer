@@ -442,7 +442,8 @@ bool request(NetworkActions::Action action, HWND window) {
     if (::IsWindow(window))
         notificationWindow = window;
     session.busy = true;
-    session.message = action == NetworkActions::Action::RefreshLabels
+    session.message = action == NetworkActions::Action::RefreshLabels ||
+                              action == NetworkActions::Action::FinishPropertyApply
                           ? L"Refreshing visualization text..."
                           : L"Select the requested source entity in the drawing.";
     NetworkSession::Notify();
@@ -452,6 +453,8 @@ bool request(NetworkActions::Action action, HWND window) {
         pending.reset();
         session.busy = false;
         session.message = L"Could not start the drawing update.";
+        if (action == NetworkActions::Action::FinishPropertyApply)
+            Autocad::VisualizationSelection::CompletePropertyApply();
         NetworkSession::Notify();
         return false;
     }
@@ -490,12 +493,15 @@ void Autocad::Network::ExecutePendingAction() {
         if (session.network && session.network->document_key != key)
             throw std::runtime_error("Reset the draft before selecting geometry in "
                                      "another drawing or layout");
-        if (operation.action == NetworkActions::Action::RefreshLabels) {
+        if (operation.action == NetworkActions::Action::RefreshLabels ||
+            operation.action == NetworkActions::Action::FinishPropertyApply) {
             if (!session.network)
                 throw std::invalid_argument("Select a root before displaying labels");
             render_labels(*database, space, scale, *session.network, session.form);
             session.busy = false;
             session.message = L"Visualization text refreshed.";
+            if (operation.action == NetworkActions::Action::FinishPropertyApply)
+                Autocad::VisualizationSelection::CompletePropertyApply();
             NetworkSession::Notify();
             return;
         }
@@ -571,6 +577,10 @@ void Autocad::Network::ExecutePendingAction() {
         session.message = L"Could not update network visualization. Please try again.";
     }
     session.busy = false;
+    // Saved metadata still completes its selection lifecycle if label drawing fails.
+    if (operation.action == NetworkActions::Action::FinishPropertyApply &&
+        operation.document == acDocManager->mdiActiveDocument())
+        Autocad::VisualizationSelection::CompletePropertyApply();
     NetworkSession::Notify();
 }
 
