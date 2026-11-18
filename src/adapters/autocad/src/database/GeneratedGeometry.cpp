@@ -72,7 +72,7 @@ AcDbObjectId layer(AcDbDatabase &database, Transaction &transaction, const std::
         check(record->setName(name.c_str()), "Invalid geometry layer name");
         AcCmColor layerColor;
         layerColor.setColorIndex(color);
-        check(record->setColor(layerColor), "Could not set geometry layer color");
+        record->setColor(layerColor);
         check(table->add(id, record.get()), "Could not create geometry layer");
         record.release()->close(); // Creation is still covered by the transaction.
     }
@@ -109,30 +109,30 @@ std::unique_ptr<AcDbPolyline> boundary(const GeometricRepresentation &representa
         if (const auto *line = std::get_if<Line>(&primitive))
             edges.push_back({line->start, line->end, 0});
         else {
-            const auto &arc = std::get<Arc>(primitive);
+            const auto &arc = std::get<dsd::geometry::Arc>(primitive);
             edges.push_back({arc.start, arc.end(), std::tan(arc.angle / 4)});
         }
     }
     auto poly = std::make_unique<AcDbPolyline>(static_cast<unsigned>(edges.size()));
     Point first = edges.front().start, current = first;
-    const auto near = [](const Point &a, const Point &b) {
+    const auto points_close = [](const Point &a, const Point &b) {
         return std::hypot(a.x - b.x, a.y - b.y) < 1e-5;
     };
     unsigned vertex = 0;
     while (!edges.empty()) {
         const auto next = std::find_if(edges.begin(), edges.end(), [&](const auto &edge) {
-            return near(current, edge.start) || near(current, edge.end);
+            return points_close(current, edge.start) || points_close(current, edge.end);
         });
         if (next == edges.end())
             throw std::runtime_error("Component outline is disconnected");
-        const bool reverse = !near(current, next->start);
+        const bool reverse = !points_close(current, next->start);
         check(poly->addVertexAt(vertex++, {current.x / scale, current.y / scale},
                                 reverse ? -next->bulge : next->bulge),
               "Could not build component outline");
         current = reverse ? next->start : next->end;
         edges.erase(next);
     }
-    if (!near(current, first))
+    if (!points_close(current, first))
         throw std::runtime_error("Component outline is not closed");
     poly->setClosed(true);
     return poly;

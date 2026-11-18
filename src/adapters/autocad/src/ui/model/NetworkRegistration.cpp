@@ -17,7 +17,7 @@ double number(const CString& text, const char* label) {
 }
 int integer(const CString& text, const char* label) {
     const auto value = number(text, label);
-    if (value < 1 || value > std::numeric_limits<int>::max() || std::floor(value) != value)
+    if (value < 1 || value > (std::numeric_limits<int>::max)() || std::floor(value) != value)
         throw std::invalid_argument(std::string("Expected positive integer: ") + label);
     return static_cast<int>(value);
 }
