@@ -9,6 +9,7 @@ struct NetworkDraft {
     CString sizingMethod = L"Equal Friction", headLoss = L"0.1", velocity = L"1000";
     CString material = L"Galvanized Steel", roughness = L"0.15";
     bool segments = true, flow = false, bod = false, dimensions = false;
+    bool visualizationVisible = true;
     CString segmentCount = L"--", totalFlow = L"--", status = L"Configured";
     int id = 0;
 };

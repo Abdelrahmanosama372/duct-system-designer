@@ -3,6 +3,12 @@
 
 class UiButton : public CButton
 {
+public:
+    enum class Icon { None, Eye, EyeOff, More };
+private:
+    Icon m_icon=Icon::None;
+    std::unique_ptr<Gdiplus::Bitmap> m_iconImage;
+    void PaintIcon(CDC& dc,const CRect& rect,COLORREF ink);
     bool m_hover=false, m_primary=false, m_flat=false;
     bool m_selectionComplete=false;
     UiStyle::ButtonRole m_role=UiStyle::ButtonRole::Secondary;
@@ -82,7 +88,14 @@ class UiButton : public CButton
                 else{dc.MoveTo(x-extent/2,y-extent);dc.LineTo(x+extent/2,y);dc.LineTo(x-extent/2,y+extent);}
                 dc.SelectObject(oldPen);rect.left+=UiStyle::Px(m_hWnd,24);
             }
-            dc.DrawText(text,rect,((GetStyle()&BS_LEFT)?DT_LEFT:DT_CENTER)|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
+            if(m_icon!=Icon::None)
+            {
+                const auto& colors=UiStyle::Colors(m_hWnd);
+                const COLORREF ink=!enabled?colors.disabled:((m_hover||focus)?colors.accent:colors.muted);
+                PaintIcon(dc,rect,ink);
+                if(focus && enabled)dc.DrawFocusRect(rect);
+            }
+            else dc.DrawText(text,rect,((GetStyle()&BS_LEFT)?DT_LEFT:DT_CENTER)|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
         }
         dc.SelectObject(oldFont);
     }
@@ -101,6 +114,8 @@ protected:
     afx_msg void OnKillFocus(CWnd* next) { CButton::OnKillFocus(next);Invalidate(FALSE); }
 public:
     afx_msg void OnEnable(BOOL enabled){CButton::OnEnable(enabled);Invalidate(FALSE);}
+    void SetIcon(Icon icon);
+    Icon GetIcon() const{return m_icon;}
     void SetFlat(bool value) {m_flat=value;Invalidate(FALSE);}
     void SetSelectionComplete(bool value){m_selectionComplete=value;Invalidate(FALSE);}
     bool SelectionComplete() const{return m_selectionComplete;}

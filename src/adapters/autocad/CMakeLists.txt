@@ -133,3 +133,14 @@ if(DUCT_UI_BUILD_CHECKS)
     add_test(NAME NativeUiChecks COMMAND DuctUiNativeChecks)
     set_tests_properties(NativeUiChecks PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:DuctUiNativeChecks>" TIMEOUT 90)
 endif()
+
+# Copy runtime visibility icons beside each native binary.
+foreach(icon_target IN ITEMS DuctSystemDesignerUi DuctUiNativeChecks)
+    if(TARGET ${icon_target})
+        add_custom_command(TARGET ${icon_target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                    "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons"
+                    "$<TARGET_FILE_DIR:${icon_target}>/icons"
+            COMMENT "Copying bundled visibility icons")
+    endif()
+endforeach()

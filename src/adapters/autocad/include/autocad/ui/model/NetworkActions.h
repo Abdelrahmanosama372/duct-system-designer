@@ -16,7 +16,8 @@ enum class Action {
     GenerateGeometry,
     RemoveGeometry,
     GenerateAnnotations,
-    RemoveAnnotations
+    RemoveAnnotations,
+    SetVisualizationVisibility
 };
 enum class GeometryRepresentation { Outline, OutlineWithCenterlines };
 struct GeometryRequest {
@@ -33,6 +34,13 @@ struct AnnotationRequest {
     dsd::application::AnnotationSettings settings;
     bool remove = false;
 };
+struct VisibilityRequest {
+    std::string network_id;
+    bool visible = true;
+};
+using VisibilityHandler = bool (*)(const VisibilityRequest&, HWND);
+void SetVisibilityHandler(VisibilityHandler handler);
+bool RequestVisibility(const VisibilityRequest& request, HWND notifyWindow);
 using LayerProvider = std::vector<std::wstring> (*)();
 using AnnotationHandler = bool (*)(const AnnotationRequest&, HWND);
 void SetAnnotationHandler(AnnotationHandler handler);

@@ -19,6 +19,15 @@ bool CaptureAnnotations(const NetworkActions::AnnotationRequest& request,HWND) {
     annotationRequest=request;return true;
 }
 std::vector<std::wstring> TextStyleFixture() {return {L"Standard",L"Office HVAC",L"Notes"};}
+std::optional<NetworkActions::VisibilityRequest> visibilityRequest;
+bool CaptureVisibility(const NetworkActions::VisibilityRequest& request,HWND) {
+    visibilityRequest=request;
+    for(auto& record:NetworkSession::Drafts())
+        if(dsd::application::network_item_id("NET",record.id)==request.network_id)
+            record.visualizationVisible=request.visible;
+    NetworkSession::Notify();
+    return true;
+}
 std::vector<std::wstring> DrawingLayerFixture() {
     std::vector<std::wstring> layers{L"0",L"M-HVAC-DUCT",L"M-HVAC-CENTERLINE",L"Supply Main"};
     for(int i=0;i<200;++i)layers.push_back(L"Test layer "+std::to_wstring(i));
@@ -179,6 +188,26 @@ public:
             registered.SendMessage(WM_COMMAND,MAKEWPARAM(6000,BN_CLICKED),0);Pump();
             { CString title;registered.GetDlgItem(6000)->GetWindowText(title);CRect r;registered.GetDlgItem(6000)->GetClientRect(&r);
               fwprintf(log,L"Collapsed title: %s (client %d x %d)\n",title.GetString(),r.Width(),r.Height()); }
+            NetworkActions::SetVisibilityHandler(CaptureVisibility);
+            registered.SendDlgItemMessage(9000,BM_CLICK);Pump();
+            if(!visibilityRequest || visibilityRequest->network_id!="NET-001" || visibilityRequest->visible ||
+                NetworkSession::Drafts()[0].visualizationVisible)++errors;
+            if(static_cast<UiButton*>(registered.GetDlgItem(9000))->GetIcon()!=UiButton::Icon::EyeOff ||
+                (registered.GetDlgItem(8000)->GetStyle()&WS_VISIBLE))++errors;
+            registered.SendDlgItemMessage(10000,BM_CLICK);Pump();
+            if(registered.GetDlgItem(8000)->GetStyle()&WS_VISIBLE)++errors;
+            NetworkSession::EditRegistered(0);
+            if(NetworkSession::Current().form.visualizationVisible)++errors;
+            NetworkSession::ResetDraft();
+            if(NetworkSession::Drafts()[0].visualizationVisible)++errors;
+            registered.SendDlgItemMessage(9000,BM_CLICK);Pump();
+            if(!NetworkSession::Drafts()[0].visualizationVisible ||
+                static_cast<UiButton*>(registered.GetDlgItem(9000))->GetIcon()!=UiButton::Icon::Eye)++errors;
+            NetworkSession::Current().busy=true;NetworkSession::Notify();
+            if(registered.GetDlgItem(9000)->IsWindowEnabled())++errors;
+            NetworkSession::Current().busy=false;NetworkSession::Notify();
+            NetworkActions::SetVisibilityHandler(nullptr);
+            fwprintf(log,L"Network toolbar: hide/show, icon state, collapsed card retention, Modify visibility retention, busy state. Errors: %d\n",errors);
             Capture(registered,L"registered-collapsed.png");
             registered.SendMessage(WM_COMMAND,MAKEWPARAM(6000,BN_CLICKED),0);Pump();
             CRect buttonRect;registered.GetDlgItem(8000)->GetWindowRect(&buttonRect);
@@ -460,7 +489,9 @@ public:
                     if(geometry->GetDlgItem(DG_CENTERLINE_LAYER_LABEL)->GetStyle()&WS_VISIBLE)++errors;
                     geometry->GetDlgItemText(DG_REDUCER,value);if(value!=L"300")++errors;
                     auto* layerSearch=static_cast<SearchableComboBox*>(geometry->GetDlgItem(DG_DUCT_LAYER));
-                    if(layerSearch->GetCount()!=204 || layerSearch->GetMinVisibleItems()!=6)++errors;
+                    // The legacy common-controls host does not implement CB_GETMINVISIBLE (returns zero).
+                    const auto minVisible=layerSearch->SendMessage(CB_GETMINVISIBLE);
+                    if(layerSearch->GetCount()!=204 || (minVisible!=0 && minVisible!=6))++errors;
                     layerSearch->SetWindowText(L"sUpPlY");
                     geometry->SendMessage(WM_COMMAND,MAKEWPARAM(DG_DUCT_LAYER,CBN_EDITCHANGE),reinterpret_cast<LPARAM>(layerSearch->m_hWnd));
                     if(layerSearch->GetCount()!=1)++errors;

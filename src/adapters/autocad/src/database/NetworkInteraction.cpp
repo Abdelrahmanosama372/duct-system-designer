@@ -14,6 +14,7 @@
 #include "dbents.h"
 #include "dbhatch.h"
 #include "dbpl.h"
+#include "dbtrans.h"
 #include "dbmtext.h"
 #include "dbsymtb.h"
 #include <algorithm>
@@ -35,6 +36,7 @@ struct Pending {
     AcApDocument* document;
     std::optional<NetworkActions::GeometryRequest> geometry;
     std::optional<NetworkActions::AnnotationRequest> annotations;
+    std::optional<NetworkActions::VisibilityRequest> visibility;
 };
 std::optional<Pending> pending;
 struct DisplayedNetwork {
@@ -377,6 +379,8 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
         check(boundary->setLayer(layer), "Could not set visualization layer");
         check(boundary->setColorIndex(network.color_index), "Could not set visualization color");
         boundary->setElevation(0.0);
+        check(boundary->setVisibility(form.visualizationVisible?AcDb::kVisible:AcDb::kInvisible),
+              "Could not set visualization boundary visibility");
         AcCmTransparency transparency;
         transparency.setAlpha(128);
         check(boundary->setTransparency(transparency), "Could not set visualization transparency");
@@ -394,6 +398,8 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
         Object<AcDbHatch> hatch{new AcDbHatch};
         hatch->setDatabaseDefaults(&database);
         check(hatch->setLayer(layer), "Could not set hatch layer");
+        check(hatch->setVisibility(form.visualizationVisible?AcDb::kVisible:AcDb::kInvisible),
+              "Could not set visualization hatch visibility");
         check(hatch->setColorIndex(network.color_index), "Could not set hatch color");
         check(hatch->setTransparency(transparency), "Could not set hatch transparency");
         check(hatch->setElevation(0.0), "Could not set hatch elevation");
@@ -428,6 +434,29 @@ void render(AcDbDatabase& database, AcDbObjectId space, double scale, const Duct
             erase(created.rectangles);
         } catch (...) {
         }
+        throw;
+    }
+}
+void set_rectangle_visibility(AcDbDatabase& database, const DuctNetwork& network, bool visible) {
+    const auto found = displayed.find(network.document_key + ":" + network.id);
+    if (found == displayed.end())
+        throw std::runtime_error("No visualization is available for this network in the active drawing");
+    auto* manager = database.transactionManager();
+    if (!manager->startTransaction())
+        throw std::runtime_error("Could not start visualization visibility update");
+    try {
+        for (const auto id : found->second.rectangles) {
+            if (id.isNull() || !id.isValid() || id.isErased()) continue;
+            AcDbObject* object = nullptr;
+            check(manager->getObject(object, id, AcDb::kForWrite), "Could not access visualization rectangle");
+            auto* entity = AcDbEntity::cast(object);
+            if (!entity) throw std::runtime_error("Unexpected visualization entity");
+            check(entity->setVisibility(visible?AcDb::kVisible:AcDb::kInvisible),
+                  "Could not change visualization visibility");
+        }
+        check(manager->endTransaction(), "Could not commit visualization visibility");
+    } catch (...) {
+        manager->abortTransaction();
         throw;
     }
 }
@@ -515,6 +544,13 @@ bool request_geometry(const NetworkActions::GeometryRequest& geometry, HWND wind
                                                        : L"Generating duct system geometry...";
     return true;
 }
+bool request_visibility(const NetworkActions::VisibilityRequest& options, HWND window) {
+    if (!request(NetworkActions::Action::SetVisualizationVisibility, window)) return false;
+    pending->visibility = options;
+    NetworkSession::Current().message = options.visible?L"Showing network visualization...":L"Hiding network visualization...";
+    NetworkSession::Notify();
+    return true;
+}
 } // namespace
 
 void Autocad::Network::Initialize() {
@@ -522,6 +558,7 @@ void Autocad::Network::Initialize() {
     acDocManager->addReactor(&documentReactor);
     NetworkActions::SetHandler(request);
     NetworkActions::SetGeometryHandler(request_geometry);
+    NetworkActions::SetVisibilityHandler(request_visibility);
     NetworkActions::SetLayerProvider(drawing_layers);
     NetworkActions::SetTextStyleProvider(drawing_text_styles);
     NetworkActions::SetAnnotationHandler(request_annotations);
@@ -530,6 +567,7 @@ void Autocad::Network::Shutdown() {
     Autocad::VisualizationSelection::Shutdown();
     NetworkActions::SetHandler(nullptr);
     NetworkActions::SetGeometryHandler(nullptr);
+    NetworkActions::SetVisibilityHandler(nullptr);
     NetworkActions::SetLayerProvider(nullptr);
     NetworkActions::SetTextStyleProvider(nullptr);
     NetworkActions::SetAnnotationHandler(nullptr);
@@ -571,6 +609,26 @@ void Autocad::Network::ExecutePendingAction() {
                 session.message = L"Duct annotations generated.";
             }
             session.busy = false;
+            NetworkSession::Notify();
+            return;
+        }
+        if (operation.visibility) {
+            const auto& options = *operation.visibility;
+            const auto& network = DuctUi::Application().registered_network(options.network_id);
+            if (network.document_key != key)
+                throw std::invalid_argument("Activate the network's source drawing and layout to change its visibility");
+            auto& records = NetworkSession::Drafts();
+            auto record = std::find_if(records.begin(), records.end(), [&](const auto& form) {
+                return network_item_id("NET", static_cast<std::size_t>(form.id)) == options.network_id;
+            });
+            if (record == records.end()) throw std::invalid_argument("Registered network not found");
+            set_rectangle_visibility(*database, network, options.visible);
+            record->visualizationVisible = options.visible;
+            if (session.network && session.network->id == network.id)
+                session.form.visualizationVisible = options.visible;
+            session.busy = false;
+            session.message = options.visible?L"Network visualization shown.":L"Network visualization hidden.";
+            acedUpdateDisplay();
             NetworkSession::Notify();
             return;
         }

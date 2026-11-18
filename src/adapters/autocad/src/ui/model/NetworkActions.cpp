@@ -6,6 +6,7 @@ NetworkActions::Handler handler = nullptr;
 NetworkActions::GeometryHandler geometryHandler = nullptr;
 NetworkActions::LayerProvider layerProvider = nullptr, textStyleProvider = nullptr;
 NetworkActions::AnnotationHandler annotationHandler = nullptr;
+NetworkActions::VisibilityHandler visibilityHandler = nullptr;
 }
 void NetworkActions::SetHandler(Handler value) { handler = value; }
 void NetworkActions::SetLayerProvider(LayerProvider value) { layerProvider = value; }
@@ -39,5 +40,12 @@ void NetworkActions::SetAnnotationHandler(AnnotationHandler value) { annotationH
 bool NetworkActions::RequestAnnotations(const AnnotationRequest& request, HWND window) {
     if (annotationHandler) return annotationHandler(request, window);
     NetworkSession::Current().message = L"Annotation drawing requires AutoCAD.";
+    return false;
+}
+
+void NetworkActions::SetVisibilityHandler(VisibilityHandler value) { visibilityHandler = value; }
+bool NetworkActions::RequestVisibility(const VisibilityRequest& request, HWND window) {
+    if (visibilityHandler) return visibilityHandler(request, window);
+    NetworkSession::Current().message = L"Visualization visibility requires AutoCAD.";
     return false;
 }

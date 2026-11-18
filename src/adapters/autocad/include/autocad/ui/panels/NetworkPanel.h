@@ -2,6 +2,7 @@
 #include "autocad/ui/layout/TabbedContent.h"
 #include "autocad/ui/model/NetworkSession.h"
 #include "autocad/ui/model/NetworkActions.h"
+#include "autocad/ui/controls/UiStatusBadge.h"
 #include <array>
 #include <cmath>
 #include <cwchar>
@@ -305,13 +306,15 @@ class RegisteredNetworksPage : public ScrollPage
     {
         size_t index=0;
         bool expanded=true;
-        UiButton title, modify;
+        UiButton title, modify, eye, more;
+        UiStatusBadge badge;
         CStatic meta, headings[3], values[3];
         UiSeparator divider;
     };
     std::vector<std::unique_ptr<Card>> m_cards;
     std::vector<CRect> m_cardRects;
     CEdit* m_search=nullptr;
+    CToolTipCtrl m_tooltips;
     template<class T>
     void CardControl(T& control,LPCTSTR text,DWORD style,UINT id,bool bold=false)
     {
@@ -342,7 +345,15 @@ protected:
             Card& card=*pointer;
             const int height=card.expanded?232:64;
             m_cardRects.push_back(CRect(Px(margin),Px(LayoutY(y))-m_scroll,Px(margin+full),Px(LayoutY(y+height))-m_scroll));
-            Place(card.title,margin+16,y+14,full-32,32);
+            const auto& draft=NetworkSession::Drafts()[card.index];
+            CClientDC dc(this);auto* font=dc.SelectObject(&m_font);
+            const int badgeWidth=max(68,(dc.GetTextExtent(draft.status).cx+Px(18))*96/max(96,static_cast<int>(GetDpiForWindow(m_hWnd))));
+            dc.SelectObject(font);
+            const int toolbar=badgeWidth+64;
+            Place(card.title,margin+16,y+14,max(24,full-32-toolbar),32);
+            Place(card.badge,margin+full-16-toolbar,y+14,badgeWidth,32);
+            Place(card.eye,margin+full-76,y+14,28,32);
+            Place(card.more,margin+full-44,y+14,28,32);
             if(card.expanded)
             {
                 Place(card.meta,margin+18,y+74,full-36,26);
@@ -389,7 +400,32 @@ protected:
         Label(L"0 networks",NC_COUNT);
         Label(L"No registered networks yet.\nUse the Registration tab to create your first draft.",NC_EMPTY);
         Label(L"Registered networks will appear here after successful analysis and registration.",NC_LIST_NOTICE);
-        m_layoutReady=true; Rebuild(); return 0;
+        m_tooltips.Create(this,TTS_ALWAYSTIP);m_tooltips.Activate(TRUE);
+        m_layoutReady=true; Rebuild(); NetworkSession::Attach(m_hWnd);return 0;
+    }
+    afx_msg void OnDestroy()
+    {
+        NetworkSession::Detach(m_hWnd);
+        ScrollPage::OnDestroy();
+    }
+    afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM)
+    {
+        for(auto& card:m_cards)
+        {
+            if(card->index>=NetworkSession::Drafts().size())continue;
+            const auto& draft=NetworkSession::Drafts()[card->index];
+            card->eye.SetIcon(draft.visualizationVisible?UiButton::Icon::Eye:UiButton::Icon::EyeOff);
+            card->eye.EnableWindow(!NetworkSession::Current().busy);
+            m_tooltips.UpdateTipText(draft.visualizationVisible?L"Hide network visualization":L"Show network visualization",&card->eye);
+            card->badge.SetWindowText(draft.status);card->badge.Invalidate(FALSE);
+        }
+        SetDlgItemText(NC_LIST_NOTICE,NetworkSession::Current().message);
+        return 0;
+    }
+    BOOL PreTranslateMessage(MSG* message) override
+    {
+        if(m_tooltips.GetSafeHwnd())m_tooltips.RelayEvent(message);
+        return ScrollPage::PreTranslateMessage(message);
     }
     BOOL OnCommand(WPARAM wp,LPARAM lp) override
     {
@@ -412,6 +448,18 @@ protected:
         }
         if(code==BN_CLICKED && id>=8000 && id<9000)
         { EditNetworkDraft(id-8000); return TRUE; }
+        if(code==BN_CLICKED && id>=9000 && id<10000)
+        {
+            const size_t index=id-9000;
+            if(index<NetworkSession::Drafts().size())
+            {
+                const auto& draft=NetworkSession::Drafts()[index];
+                const auto networkId=dsd::application::network_item_id("NET",static_cast<size_t>(draft.id));
+                NetworkActions::RequestVisibility({networkId,!draft.visualizationVisible},m_hWnd);
+            }
+            return TRUE;
+        }
+        if(code==BN_CLICKED && id>=10000 && id<11000)return TRUE; // Reserved for future network actions.
         return ScrollPage::OnCommand(wp,lp);
     }
     void UpdateHeight()
@@ -426,6 +474,8 @@ public:
         // Release control wrappers only after their HWNDs have been destroyed.
         for(auto& card:m_cards)
         {
+            m_tooltips.DelTool(&card->eye);m_tooltips.DelTool(&card->more);
+            card->eye.DestroyWindow();card->more.DestroyWindow();card->badge.DestroyWindow();
             card->title.DestroyWindow(); card->modify.DestroyWindow(); card->meta.DestroyWindow();
             card->divider.DestroyWindow();
             for(int i=0;i<3;++i){card->headings[i].DestroyWindow();card->values[i].DestroyWindow();}
@@ -437,6 +487,15 @@ public:
             auto card=std::make_unique<Card>(); card->index=index;
             CardControl(card->title,CString(L"\x25BC  ")+draft.name,WS_TABSTOP|BS_PUSHBUTTON|BS_LEFT,6000+static_cast<UINT>(index),true);
             card->title.SetFlat(true);card->title.SetSurface(UiStyle::Colors(m_hWnd).card);card->title.SetFont(&m_cardTitle);
+            CardControl(card->badge,draft.status,SS_OWNERDRAW,0);
+            CardControl(card->eye,L"Toggle network visualization",WS_TABSTOP|BS_PUSHBUTTON,9000+static_cast<UINT>(index));
+            card->eye.SetFlat(true);card->eye.SetSurface(UiStyle::Colors(m_hWnd).card);
+            card->eye.SetIcon(draft.visualizationVisible?UiButton::Icon::Eye:UiButton::Icon::EyeOff);
+            card->eye.EnableWindow(!NetworkSession::Current().busy);
+            CardControl(card->more,L"More network actions",WS_TABSTOP|BS_PUSHBUTTON,10000+static_cast<UINT>(index));
+            card->more.SetFlat(true);card->more.SetSurface(UiStyle::Colors(m_hWnd).card);card->more.SetIcon(UiButton::Icon::More);
+            m_tooltips.AddTool(&card->eye,draft.visualizationVisible?L"Hide network visualization":L"Show network visualization");
+            m_tooltips.AddTool(&card->more,L"More actions (coming soon)");
             card->modify.SetSurface(UiStyle::Colors(m_hWnd).card);
             CString meta;meta.Format(L"ID: NET-%03d  |  System: %s",draft.id,draft.system.GetString());
             CardControl(card->meta,meta,SS_LEFT|SS_NOPREFIX,0);
