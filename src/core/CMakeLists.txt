@@ -5,6 +5,7 @@ add_library(dsd_core STATIC
     ductsystem/src/sheet_metal_node.cpp
     ductsystem/src/duct_fitting_tree.cpp
     ductsystem/src/duct_system.cpp
+    ductsystem/src/duct_system_sizer.cpp
     ductsystem/src/visitors/sheet_metal_component_visitor.cpp
     ductsystem/src/visitors/area_calculator.cpp
     ductsystem/src/visitors/geometry_constructor.cpp

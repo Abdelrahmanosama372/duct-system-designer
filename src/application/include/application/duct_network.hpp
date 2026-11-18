@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geometry/block.hpp"
+#include "application/network_sizing_configuration.hpp"
 #include <array>
 #include <map>
 #include <optional>
@@ -88,6 +89,7 @@ struct DuctNetwork {
     std::wstring name;
     NetworkSystemType system_type = NetworkSystemType::Supply;
     NetworkMaterial material = NetworkMaterial::GalvanizedSteel;
+    NetworkSizingConfiguration sizing;
     std::string document_key;
     std::optional<SourcePath> root;
     std::vector<SourcePath> lines;

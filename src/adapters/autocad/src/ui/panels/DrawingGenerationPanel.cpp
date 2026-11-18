@@ -6,6 +6,8 @@
 BEGIN_MESSAGE_MAP(DrawingGenerationPage,ScrollPage)
     ON_WM_CREATE()
     ON_WM_ERASEBKGND()
+    ON_WM_DESTROY()
+    ON_MESSAGE(WM_DSD_NETWORK_UPDATED,OnNetworkUpdated)
 END_MESSAGE_MAP()
 
 BEGIN_MESSAGE_MAP(DrawingGenerationContent,TabbedContent)

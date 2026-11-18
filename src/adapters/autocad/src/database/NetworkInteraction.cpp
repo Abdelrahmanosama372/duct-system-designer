@@ -1,5 +1,6 @@
 #include "autocad/ui/platform/ObjectArx.h"
 #include "autocad/database/NetworkInteraction.h"
+#include "autocad/database/GeneratedGeometry.h"
 #include "autocad/database/VisualizationSelection.h"
 #include "acdocman.h"
 #include "acstring.h"
@@ -32,6 +33,7 @@ struct Cancelled {};
 struct Pending {
     NetworkActions::Action action;
     AcApDocument* document;
+    std::optional<NetworkActions::GeometryRequest> geometry;
 };
 std::optional<Pending> pending;
 struct DisplayedNetwork {
@@ -46,6 +48,7 @@ class DocumentReactor final : public AcApDocManagerReactor {
     void documentToBeDestroyed(AcApDocument* document) override {
         const auto prefix =
             std::to_string(reinterpret_cast<std::uintptr_t>(document->database())) + ":";
+        Autocad::GeneratedGeometry::ForgetDocument(prefix);
         std::erase_if(displayed,
                       [&](const auto& entry) { return entry.first.starts_with(prefix); });
         auto& session = NetworkSession::Current();
@@ -65,7 +68,7 @@ DocumentReactor documentReactor;
 
 bool is_visualization(const AcDbEntity& entity) {
     resbuf* data = entity.xData(visualizationApp);
-    const bool tagged = data != nullptr;
+    const bool tagged = data != nullptr || Autocad::GeneratedGeometry::IsGenerated(entity);
     if (data)
         acutRelRb(data);
     return tagged;
@@ -460,16 +463,27 @@ bool request(NetworkActions::Action action, HWND window) {
     }
     return true;
 }
+bool request_geometry(const NetworkActions::GeometryRequest& geometry, HWND window) {
+    if (!request(geometry.remove ? NetworkActions::Action::RemoveGeometry
+                                : NetworkActions::Action::GenerateGeometry, window)) return false;
+    pending->geometry = geometry;
+    NetworkSession::Current().message = geometry.remove ? L"Removing generated geometry..."
+                                                       : L"Generating duct system geometry...";
+    return true;
+}
 } // namespace
 
 void Autocad::Network::Initialize() {
     Autocad::VisualizationSelection::Initialize();
     acDocManager->addReactor(&documentReactor);
     NetworkActions::SetHandler(request);
+    NetworkActions::SetGeometryHandler(request_geometry);
 }
 void Autocad::Network::Shutdown() {
     Autocad::VisualizationSelection::Shutdown();
     NetworkActions::SetHandler(nullptr);
+    NetworkActions::SetGeometryHandler(nullptr);
+    Autocad::GeneratedGeometry::Clear();
     acDocManager->removeReactor(&documentReactor);
     pending.reset();
     displayed.clear();
@@ -490,6 +504,27 @@ void Autocad::Network::ExecutePendingAction() {
         const auto space = database->currentSpaceId();
         const double scale = millimetres_per_unit(*database);
         const auto key = document_key(*database, space);
+        if (operation.geometry) {
+            const auto& options = *operation.geometry;
+            auto& application = DuctUi::Application();
+            const auto& network = application.registered_network(options.network_id);
+            if (network.document_key != key)
+                throw std::invalid_argument("Activate the network's source drawing and layout before generating geometry");
+            if (options.remove) {
+                Autocad::GeneratedGeometry::Remove(*database, network);
+                application.clear_network_generation(network.id);
+                session.message = L"Generated geometry removed.";
+            } else {
+                auto result = application.prepare_network_generation(network.id,
+                    {options.takeoff_length_mm, options.reducer_length_mm, options.elbow_inside_radius_ratio});
+                Autocad::GeneratedGeometry::Replace(*database, space, scale, network, result, options);
+                application.commit_network_generation(std::move(result));
+                session.message = L"Duct system sized and geometry generated.";
+            }
+            session.busy = false;
+            NetworkSession::Notify();
+            return;
+        }
         if (session.network && session.network->document_key != key)
             throw std::runtime_error("Reset the draft before selecting geometry in "
                                      "another drawing or layout");

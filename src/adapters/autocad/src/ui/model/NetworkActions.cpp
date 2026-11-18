@@ -3,8 +3,15 @@
 
 namespace {
 NetworkActions::Handler handler = nullptr;
+NetworkActions::GeometryHandler geometryHandler = nullptr;
 }
 void NetworkActions::SetHandler(Handler value) { handler = value; }
+void NetworkActions::SetGeometryHandler(GeometryHandler value) { geometryHandler = value; }
+bool NetworkActions::RequestGeometry(const GeometryRequest& request, HWND window) {
+    if (geometryHandler) return geometryHandler(request, window);
+    NetworkSession::Current().message = L"Geometry drawing requires AutoCAD.";
+    return false;
+}
 bool NetworkActions::RefreshLabels(HWND notifyWindow) {
     return handler && handler(Action::RefreshLabels, notifyWindow);
 }

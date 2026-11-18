@@ -1,10 +1,41 @@
 #include "autocad/ui/model/NetworkSession.h"
 #include "autocad/ui/model/ApplicationSession.h"
 #include <stdexcept>
+#include <cmath>
+#include <limits>
 
 namespace {
 CString wide(const std::string& text) {
     return CString(std::wstring(text.begin(), text.end()).c_str());
+}
+double number(const CString& text, const char* label) {
+    wchar_t* end = nullptr;
+    const double value = std::wcstod(text.GetString(), &end);
+    if (end == text.GetString() || *end || !std::isfinite(value))
+        throw std::invalid_argument(std::string("Invalid sizing setting: ") + label);
+    return value;
+}
+int integer(const CString& text, const char* label) {
+    const auto value = number(text, label);
+    if (value < 1 || value > std::numeric_limits<int>::max() || std::floor(value) != value)
+        throw std::invalid_argument(std::string("Expected positive integer: ") + label);
+    return static_cast<int>(value);
+}
+dsd::application::NetworkSizingConfiguration sizing_config(const NetworkDraft& form) {
+    using namespace dsd::application;
+    NetworkSizingConfiguration config;
+    config.minimum_mm = integer(form.minimum, "minimum");
+    config.maximum_mm = integer(form.maximum, "maximum");
+    config.increment_mm = integer(form.increment, "increment");
+    config.aspect_ratio = number(form.aspect, "aspect ratio");
+    config.roughness_mm = number(form.roughness, "roughness");
+    config.method = form.sizingMethod == L"Velocity" ? NetworkSizingMethod::EqualVelocity
+                                                         : NetworkSizingMethod::EqualFriction;
+    if (config.method == NetworkSizingMethod::EqualVelocity)
+        config.velocity_fpm = number(form.velocity, "velocity");
+    else config.head_loss_in_wg_per_100ft = number(form.headLoss, "head loss");
+    (void)config.to_sizer_config();
+    return config;
 }
 void summarize(NetworkDraft& form, const dsd::application::DuctNetwork& network) {
     form.segmentCount.Format(L"%zu", network.segmented_lines_infos.size());
@@ -43,7 +74,9 @@ void NetworkSession::RegisterCurrent() {
     else
         *existing = form;
     // Revalidate in the application before accepting the complete snapshot.
-    DuctUi::Application().register_network(*session.network);
+    auto network = *session.network;
+    network.sizing = sizing_config(form);
+    DuctUi::Application().register_network(std::move(network));
     Drafts().swap(records);
     ResetDraft();
     session.message = L"Network registered. Select a root to start another network.";

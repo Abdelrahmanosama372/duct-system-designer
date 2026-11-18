@@ -13,6 +13,11 @@
 namespace {
 int labelRefreshRequests=0;
 int propertyFinishRequests=0;
+std::optional<NetworkActions::GeometryRequest> geometryRequest;
+bool CaptureGeometry(const NetworkActions::GeometryRequest& request,HWND) {
+    geometryRequest=request;
+    return true;
+}
 bool CaptureLabelRefresh(NetworkActions::Action action,HWND) {
     if(action==NetworkActions::Action::RefreshLabels)++labelRefreshRequests;
     if(action==NetworkActions::Action::FinishPropertyApply)++propertyFinishRequests;
@@ -257,6 +262,9 @@ public:
                 registration.SendDlgItemMessage(NC_REGISTER,BM_CLICK);Pump();
                 if(NetworkSession::Current().network || NetworkSession::CanRegister())++errors;
                 if(NetworkSession::Drafts().size()!=4 || NetworkSession::Drafts().back().totalFlow!=L"400 CFM")++errors;
+                const auto& savedSizing=ProjectInfo::Application().registered_network("NET-004").sizing;
+                if(savedSizing.method!=NetworkSizingMethod::EqualVelocity || savedSizing.velocity_fpm!=1250 ||
+                    savedSizing.roughness_mm!=0.15)++errors;
                 registration.GetDlgItemText(NC_NAME,value);if(!value.IsEmpty())++errors;
                 registered.Rebuild();registered.GetDlgItemText(NC_COUNT,value);if(value!=L"4 of 4 networks")++errors;
                 // Loading for modification copies geometry and metadata and locks the name.
@@ -410,6 +418,7 @@ public:
 
             {
                 DrawingGenerationContent content;
+                NetworkActions::SetGeometryHandler(CaptureGeometry);
                 if(!content.CreateView(&frame,107))++errors;
                 else
                 {
@@ -441,7 +450,9 @@ public:
                     geometry->SetDlgItemText(DG_REDUCER,L"-1");geometry->SendDlgItemMessage(DG_GENERATE,BM_CLICK);Pump();
                     geometry->GetDlgItemText(DG_STATUS,value);if(value.Find(L"positive value")<0)++errors;
                     geometry->SetDlgItemText(DG_REDUCER,L"350");geometry->SendDlgItemMessage(DG_GENERATE,BM_CLICK);Pump();
-                    geometry->GetDlgItemText(DG_STATUS,value);if(value.Find(L"Return Network 01")<0 || value.Find(L"Drawing unchanged")<0)++errors;
+                    if(!geometryRequest || geometryRequest->remove || geometryRequest->reducer_length_mm!=350 ||
+                        geometryRequest->elbow_inside_radius_ratio!=1.5 || geometryRequest->network_id!="NET-002")++errors;
+                    geometry->GetDlgItemText(DG_ELBOW,value);if(value!=L"1.5")++errors;
                     geometry->SendMessage(WM_VSCROLL,SB_TOP);Pump();Capture(content,L"drawing-geometry-top.png");
                     geometry->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();Capture(content,L"drawing-geometry-bottom.png");
                     change(1);annotations->GetDlgItemText(DG_NETWORK,value);if(value!=L"Return Network 01")++errors;
@@ -461,10 +472,12 @@ public:
                     annotations->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();Capture(content,L"drawing-annotations-bottom.png");
                     for(int i=0;i<12;++i){content.MoveWindow(0,0,i%2?540:460,i%2?740:340);change(i%2);content.GetDlgItem(6601+i%2)->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();content.GetDlgItem(6601+i%2)->SendMessage(WM_VSCROLL,SB_TOP);Pump();}
                     change(0);geometry->GetDlgItemText(DG_REDUCER,value);if(value!=L"350")++errors;
-                    geometry->SendDlgItemMessage(DG_REMOVE,BM_CLICK);Pump();geometry->GetDlgItemText(DG_STATUS,value);if(value.Find(L"remove generated geometry")<0)++errors;
+                    geometry->SendDlgItemMessage(DG_REMOVE,BM_CLICK);Pump();
+                    if(!geometryRequest || !geometryRequest->remove || geometryRequest->network_id!="NET-002")++errors;
                     content.DestroyWindow();
                 }
-                fwprintf(log,L"Drawing Generation: tabs, network synchronization, defaults, padded combo sizes, validation, preview actions, retained edits and 12 resize/scroll cycles. Errors: %d\n",errors);
+                NetworkActions::SetGeometryHandler(nullptr);
+                fwprintf(log,L"Drawing Generation: tabs, network synchronization, defaults, validation, geometry requests, retained edits and resize/scroll cycles. Errors: %d\n",errors);
             }
 
 

@@ -26,31 +26,56 @@ void DsdApplication::register_network(DuctNetwork network) {
     if (network.id.empty() || key.empty())
         throw std::invalid_argument("Network ID and name are required");
     const auto analysis = analyze_network(network);
+    (void)network.sizing.to_sizer_config();
     if (!analysis.ok())
         throw std::invalid_argument(analysis.issues.front().item_id + ": " +
                                     analysis.issues.front().message);
     const auto existing = registered_networks_.find(network.id);
-    if (existing != registered_networks_.end() && existing->second.name != network.name)
+    if (existing != registered_networks_.end() && existing->second.network.name != network.name)
         throw std::invalid_argument("The name of a registered network cannot be changed");
     for (const auto& [id, saved] : registered_networks_)
-        if (id != network.id && name_key(saved.name) == key)
+        if (id != network.id && name_key(saved.network.name) == key)
             throw std::invalid_argument("That network name is already registered");
     if (existing == registered_networks_.end()) {
         const auto id = network.id;
-        registered_networks_.emplace(id, std::move(network));
+        registered_networks_.emplace(id, RegisteredNetwork{std::move(network), std::nullopt});
     } else {
         using std::swap;
-        swap(existing->second, network);
+        swap(existing->second.network, network);
+        existing->second.generation.reset();
+        ++existing->second.revision;
     }
 }
-const std::map<std::string, DuctNetwork>& DsdApplication::registered_networks() const noexcept {
+const std::map<std::string, RegisteredNetwork>& DsdApplication::registered_networks() const noexcept {
     return registered_networks_;
 }
 const DuctNetwork& DsdApplication::registered_network(const std::string& id) const {
+    return registered_network_record(id).network;
+}
+const RegisteredNetwork& DsdApplication::registered_network_record(const std::string& id) const {
     const auto item = registered_networks_.find(id);
     if (item == registered_networks_.end())
         throw std::invalid_argument("Registered network not found");
     return item->second;
+}
+NetworkGenerationResult DsdApplication::prepare_network_generation(const std::string& id,
+    const ductsystem::FittingSizingConfig& fittings) const {
+    const auto& record = registered_network_record(id);
+    auto result = network_geometry_generator_.generate(record.network, fittings);
+    result.source_revision = record.revision;
+    return result;
+}
+void DsdApplication::commit_network_generation(NetworkGenerationResult result) {
+    const auto& record = registered_network_record(result.network_id);
+    if (result.source_revision != record.revision)
+        throw std::invalid_argument("Network changed after geometry preparation; regenerate it");
+    if (!result.system || result.geometry.empty())
+        throw std::invalid_argument("Cannot publish an incomplete generation result");
+    registered_networks_.at(result.network_id).generation = std::move(result);
+}
+void DsdApplication::clear_network_generation(const std::string& id) {
+    (void)registered_network_record(id);
+    registered_networks_.at(id).generation.reset();
 }
 void DsdApplication::clear_networks() noexcept { registered_networks_.clear(); }
 } // namespace dsd::application

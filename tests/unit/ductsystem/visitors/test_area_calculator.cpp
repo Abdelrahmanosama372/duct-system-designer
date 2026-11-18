@@ -78,7 +78,14 @@ TEST_P(ElbowAreaTest, CalculatesBothCheeksAndCurvedFacesForSignedAngles) {
 INSTANTIATE_TEST_SUITE_P(PythonReferences, ElbowAreaTest, ::testing::Values(
     std::tuple{std::numbers::pi / 2, 0.12 * std::numbers::pi},
     std::tuple{-std::numbers::pi / 2, 0.12 * std::numbers::pi},
-    std::tuple{std::numbers::pi, 0.24 * std::numbers::pi}));
+    std::tuple{std::numbers::pi / 3, 0.08 * std::numbers::pi}));
+
+TEST_F(AreaCalculatorTest, DownwardElbowUsesHeightAsTheBendDimension) {
+    RectangularElbow elbow{0, 100, pressure, material, std::numbers::pi / 2,
+                           400, 200, ElbowOrientation::Downward};
+    elbow.accept(visitor);
+    EXPECT_NEAR(visitor.area_m2(), 0.24 * std::numbers::pi, 1e-12);
+}
 
 class ElbowRadiusAreaTest : public ::testing::TestWithParam<std::tuple<double, double>> {};
 

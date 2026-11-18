@@ -9,12 +9,25 @@
 namespace dsd::ductsystem::test {
 namespace {
 
-TEST(RectangularElbowTest, AcceptsEitherTurnDirectionAndBoundaryAngles) {
-    for (double angle : {-std::numbers::pi, -std::numbers::pi / 2,
-                          std::numbers::pi / 2, std::numbers::pi}) {
+TEST(RectangularElbowTest, AcceptsEitherTurnDirectionWithinSupportedRange) {
+    for (double angle : {-174 * std::numbers::pi / 180, -std::numbers::pi / 2,
+                          std::numbers::pi / 2, 6 * std::numbers::pi / 180}) {
         const RectangularElbow elbow{0, 100, pressure, material, angle};
         EXPECT_EQ(elbow.angle, angle);
     }
+}
+TEST(RectangularElbowTest, RejectsExcludedBoundariesAndHalfTurns) {
+    for (const double degrees : {-180., -175., -5., 5., 175., 180.})
+        EXPECT_THROW((void)(RectangularElbow{0, 100, pressure, material,
+            degrees * std::numbers::pi / 180}), std::invalid_argument);
+}
+TEST(RectangularElbowTest, DownwardRadiiUseDuctHeight) {
+    const RectangularElbow elbow{0, 100, pressure, material, std::numbers::pi / 2,
+                                400, 200, ElbowOrientation::Downward};
+    EXPECT_EQ(elbow.inside_radius(1.5), 300);
+    EXPECT_EQ(elbow.centerline_radius(1.5), 400);
+    EXPECT_THROW((void)(RectangularElbow{0, 100, pressure, material, 1,
+        400, 200, ElbowOrientation::Downward}), std::invalid_argument);
 }
 
 TEST(RectangularElbowTest, RejectsAnglesOutsideSignedPiRange) {

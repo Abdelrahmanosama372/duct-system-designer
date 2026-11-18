@@ -47,11 +47,12 @@ void AreaCalculatorVisitor::visit_rectangular_elbow(RectangularElbow& component)
     const double width = dimension(component, component.width, "width");
     const double height = dimension(component, component.height, "height");
     const double angle = std::abs(component.angle);
-    if (!std::isfinite(angle) || angle == 0 || angle > std::numbers::pi) {
-        throw AreaCalculationError("Elbow requires a nonzero angle between -pi and pi");
+    if (!std::isfinite(angle) || angle <= 5 * std::numbers::pi / 180 ||
+        angle >= 175 * std::numbers::pi / 180) {
+        throw AreaCalculationError("Elbow angle magnitude must be strictly between 5 and 175 degrees");
     }
     const double inside = *component.inside_radius(config_.elbow_inside_radius_ratio);
-    const double outside = inside + width;
+    const double outside = inside + (component.orientation == ElbowOrientation::Downward ? height : width);
     // Two annular-sector cheeks and inner/outer curved faces.
     // Factoring outside^2 - inside^2 avoids cancellation for large radii.
     area_ = square_metres(component, angle * (inside + outside) * (width + height));

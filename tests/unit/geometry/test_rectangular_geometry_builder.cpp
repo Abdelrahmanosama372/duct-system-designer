@@ -103,8 +103,16 @@ TEST_F(GeometryBuilderTest, RejectsUnsizedAndMutatedInvalidDimensions) {
 }
 
 TEST_F(GeometryBuilderTest, RejectsHalfTurnElbowUnsupportedByPlanPlacement) {
-    const RectangularElbow elbow{0, 100, pressure, material, std::numbers::pi, 200, 100};
+    RectangularElbow elbow{0, 100, pressure, material, std::numbers::pi / 2, 200, 100};
+    elbow.angle = std::numbers::pi;
     EXPECT_THROW((void)builder.build_elbow(elbow, identity), GeometryConstructionError);
+}
+TEST_F(GeometryBuilderTest, RejectsMutatedAnglesAtExcludedLimits) {
+    RectangularElbow elbow{0, 100, pressure, material, std::numbers::pi / 2, 200, 100};
+    for (const double degrees : {-175., -5., 5., 175.}) {
+        elbow.angle = degrees * std::numbers::pi / 180;
+        EXPECT_THROW((void)builder.build_elbow(elbow, identity), GeometryConstructionError);
+    }
 }
 
 TEST_F(GeometryBuilderTest, RejectsMutatedInvalidShoeSideAndUnsupportedView) {

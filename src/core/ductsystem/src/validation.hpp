@@ -21,6 +21,8 @@ inline void dimension(std::optional<double> value, const char* name) {
 inline void validate(Material material) {
     switch (material) {
     case Material::GalvanizedSteel:
+    case Material::StainlessSteel:
+    case Material::CarbonSteel:
     case Material::Aluminum: return;
     }
     throw std::invalid_argument("Invalid material");
@@ -38,6 +40,7 @@ inline void validate(PressureLevel pressure) {
 inline void validate(SystemType type) {
     switch (type) {
     case SystemType::Supply:
+    case SystemType::Exhaust:
     case SystemType::Return: return;
     }
     throw std::invalid_argument("Invalid system type");

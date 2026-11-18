@@ -30,23 +30,30 @@ RectangularDuct::RectangularDuct(
 
 RectangularElbow::RectangularElbow(
     int id, double flow, PressureLevel pressure, Material material, double angle_value,
-    std::optional<double> width, std::optional<double> height)
-    : RectangularDuctFitting(id, flow, pressure, material, width, height), angle(angle_value) {
-    if (!std::isfinite(angle) || angle == 0 || std::abs(angle) > std::numbers::pi) {
-        throw std::invalid_argument("Elbow angle must be nonzero radians between -pi and pi");
+    std::optional<double> width, std::optional<double> height, ElbowOrientation orientation_value)
+    : RectangularDuctFitting(id, flow, pressure, material, width, height), angle(angle_value),
+      orientation(orientation_value) {
+    if (!std::isfinite(angle) || std::abs(angle) <= 5 * std::numbers::pi / 180 ||
+        std::abs(angle) >= 175 * std::numbers::pi / 180) {
+        throw std::invalid_argument("Elbow angle magnitude must be strictly between 5 and 175 degrees");
     }
+    if (orientation != ElbowOrientation::Horizontal && orientation != ElbowOrientation::Downward)
+        throw std::invalid_argument("Invalid elbow orientation");
+    if (orientation == ElbowOrientation::Downward && std::abs(angle - std::numbers::pi / 2) > 1e-10)
+        throw std::invalid_argument("Downward elbows require a 90-degree bend");
 }
 
 std::optional<double> RectangularElbow::inside_radius(double ratio) const {
     detail::positive(ratio, "inside-radius ratio");
-    if (!width) return std::nullopt;
-    return ratio * *width;
+    const auto bend_dimension = orientation == ElbowOrientation::Downward ? height : width;
+    if (!bend_dimension) return std::nullopt;
+    return ratio * *bend_dimension;
 }
 
 std::optional<double> RectangularElbow::centerline_radius(double ratio) const {
     const auto inside = inside_radius(ratio);
     if (!inside) return std::nullopt;
-    return *inside + *width / 2;
+    return *inside + *(orientation == ElbowOrientation::Downward ? height : width) / 2;
 }
 
 RectangularReducer::RectangularReducer(

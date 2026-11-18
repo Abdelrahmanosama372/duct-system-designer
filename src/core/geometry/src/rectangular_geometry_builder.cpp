@@ -60,9 +60,23 @@ GeometricRepresentation RectangularGeometricRepresentationBuilder::build_elbow(
     const double width = dimension(c, c.width, "width");
     const double height = dimension(c, c.height, "height");
     const double angle = c.angle;
-    if (!std::isfinite(angle) || angle == 0 || std::abs(angle) >= std::numbers::pi) {
-        throw GeometryConstructionError("Plan elbow requires a turn strictly between 0 and 180 degrees");
+    if (!std::isfinite(angle) || std::abs(angle) <= 5 * std::numbers::pi / 180 ||
+        std::abs(angle) >= 175 * std::numbers::pi / 180) {
+        throw GeometryConstructionError("Elbow angle magnitude must be strictly between 5 and 175 degrees");
     }
+    if (c.orientation == ductsystem::ElbowOrientation::Downward) {
+        if (std::abs(angle - std::numbers::pi / 2) > 1e-10)
+            throw GeometryConstructionError("Downward elbows require a 90-degree bend");
+        return place(c.id, {2, width, height, angle, 1}, context, [&] {
+            const double length = (config_.elbow_inside_radius_ratio + 1) * height;
+            return GeometricRepresentation{c.id,
+                polygon({{-length, -width / 2}, {0, -width / 2},
+                         {0, width / 2}, {-length, width / 2}}),
+                {skeleton({-length, 0}, {0, 0})}};
+        });
+    }
+    if (c.orientation != ductsystem::ElbowOrientation::Horizontal)
+        throw GeometryConstructionError("Invalid elbow orientation");
     return place(c.id, {2, width, height, angle}, context, [&] {
         const double inside = config_.elbow_inside_radius_ratio * width;
         const double radius = inside + width / 2;

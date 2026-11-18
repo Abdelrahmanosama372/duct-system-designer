@@ -1,14 +1,11 @@
 #pragma once
 #include "autocad/ui/layout/TabbedContent.h"
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/NetworkActions.h"
 #include <array>
 #include <cmath>
 #include <cwchar>
 
-#include <cmath>
-#include <cwchar>
-
-// Drawing generation UI preview: no AutoCAD entities are created or removed.
 namespace DrawingPreview { inline int networkId=1; }
 enum DrawingControl : UINT
 {
@@ -102,7 +99,8 @@ protected:
             Label(L"Duct representation",DG_REP_LABEL);Combo(DG_REP,{L"Rectangular Hatch",L"Rectangular Outline",L"Centerline"});
             Label(L"Reducer length (mm)",DG_REDUCER_LABEL);Edit(DG_REDUCER,L"300");
             Label(L"Takeoff length (mm)",DG_TAKEOFF_LABEL);Edit(DG_TAKEOFF,L"150");
-            Label(L"Elbow configuration",DG_ELBOW_LABEL);Combo(DG_ELBOW,{L"Radius Elbow",L"Mitered Elbow",L"Square Elbow"});
+            Label(L"Elbow inside-radius ratio",DG_ELBOW_LABEL);Combo(DG_ELBOW,{L"1",L"1.5",L"2"});
+            static_cast<CComboBox*>(GetDlgItem(DG_ELBOW))->SetCurSel(1);
             Label(L"Duct geometry layer",DG_DUCT_LAYER_LABEL);Combo(DG_DUCT_LAYER,{L"M-HVAC-DUCT",L"M-HVAC-GEOMETRY",L"0"});
             Label(L"Fitting geometry layer",DG_FITTING_LAYER_LABEL);Combo(DG_FITTING_LAYER,{L"M-HVAC-FITTINGS",L"M-HVAC-DUCT",L"0"});
         }
@@ -121,9 +119,15 @@ protected:
         static_cast<UiButton*>(GetDlgItem(DG_GENERATE))->SetRole(UiStyle::ButtonRole::Generation);
         Control<CButton>(m_annotations?L"Remove Generated Annotations":L"Remove Generated Geometry",BS_PUSHBUTTON,DG_REMOVE);
         static_cast<UiButton*>(GetDlgItem(DG_REMOVE))->SetRole(UiStyle::ButtonRole::Removal);
-        Label(L"UI preview only. Drawing generation and removal are not connected yet.",DG_STATUS);
+        Label(m_annotations?L"Annotation generation is not connected yet.":L"Select a registered network to generate geometry.",DG_STATUS);
         UiStyle::TextColor(*GetDlgItem(DG_STATUS),UiStyle::ProjectReferenceStyle.muted);
+        NetworkSession::Attach(GetSafeHwnd());
         RefreshNetworks();m_contentHeight=m_annotations?1144:1002;m_layoutReady=true;Relayout();return 0;
+    }
+    afx_msg void OnDestroy(){NetworkSession::Detach(GetSafeHwnd());ScrollPage::OnDestroy();}
+    afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM) {
+        if(!m_annotations)SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
+        return 0;
     }
     afx_msg BOOL OnEraseBkgnd(CDC* dc)
     {
@@ -151,6 +155,26 @@ protected:
                     if(!Valid(DG_TEXT_HEIGHT,false) || !Valid(DG_OFFSET,true))return TRUE;
                 }
                 else if(!Valid(DG_REDUCER,false) || !Valid(DG_TAKEOFF,false))return TRUE;
+            }
+            if(!m_annotations) {
+                NetworkActions::GeometryRequest request;
+                const auto selected=static_cast<int>(combo->GetItemData(combo->GetCurSel()));
+                request.network_id=dsd::application::network_item_id("NET",selected);
+                request.remove=id==DG_REMOVE;
+                if(!request.remove) {
+                    CString text;
+                    GetDlgItemText(DG_REDUCER,text);request.reducer_length_mm=std::wcstod(text.GetString(),nullptr);
+                    GetDlgItemText(DG_TAKEOFF,text);request.takeoff_length_mm=std::wcstod(text.GetString(),nullptr);
+                    GetDlgItemText(DG_ELBOW,text);request.elbow_inside_radius_ratio=std::wcstod(text.GetString(),nullptr);
+                    GetDlgItemText(DG_DUCT_LAYER,text);request.duct_layer=text.GetString();
+                    GetDlgItemText(DG_FITTING_LAYER,text);request.fitting_layer=text.GetString();
+                    const int mode=static_cast<CComboBox*>(GetDlgItem(DG_REP))->GetCurSel();
+                    request.representation=mode==0?NetworkActions::GeometryRepresentation::Hatch:
+                        mode==1?NetworkActions::GeometryRepresentation::Outline:NetworkActions::GeometryRepresentation::Centerline;
+                }
+                NetworkActions::RequestGeometry(request,GetSafeHwnd());
+                SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
+                return TRUE;
             }
             CString network;GetDlgItemText(DG_NETWORK,network);CString message;
             message.Format(L"Preview: %s %s for %s. Drawing unchanged.",id==DG_REMOVE?L"remove generated":L"generate / regenerate",
