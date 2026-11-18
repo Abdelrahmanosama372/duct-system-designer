@@ -11,6 +11,10 @@ void Replace(AcDbDatabase &database, AcDbObjectId space, double millimetresPerUn
              const dsd::application::NetworkGenerationResult &result,
              const NetworkActions::GeometryRequest &request);
 void Remove(AcDbDatabase &database, const dsd::application::DuctNetwork &network);
+void ReplaceAnnotations(AcDbDatabase& database, AcDbObjectId space, double millimetresPerUnit,
+    const dsd::application::DuctNetwork& network,
+    const dsd::application::AnnotationGenerationResult& result);
+void RemoveAnnotations(AcDbDatabase& database, const dsd::application::DuctNetwork& network);
 bool IsGenerated(const AcDbEntity &entity);
 void ForgetDocument(const std::string &documentPrefix);
 void Clear();

@@ -14,6 +14,11 @@ namespace {
 int labelRefreshRequests=0;
 int propertyFinishRequests=0;
 std::optional<NetworkActions::GeometryRequest> geometryRequest;
+std::optional<NetworkActions::AnnotationRequest> annotationRequest;
+bool CaptureAnnotations(const NetworkActions::AnnotationRequest& request,HWND) {
+    annotationRequest=request;return true;
+}
+std::vector<std::wstring> TextStyleFixture() {return {L"Standard",L"Office HVAC",L"Notes"};}
 std::vector<std::wstring> DrawingLayerFixture() {
     std::vector<std::wstring> layers{L"0",L"M-HVAC-DUCT",L"M-HVAC-CENTERLINE",L"Supply Main"};
     for(int i=0;i<200;++i)layers.push_back(L"Test layer "+std::to_wstring(i));
@@ -425,6 +430,8 @@ public:
                 DrawingGenerationContent content;
                 NetworkActions::SetGeometryHandler(CaptureGeometry);
                 NetworkActions::SetLayerProvider(DrawingLayerFixture);
+                NetworkActions::SetTextStyleProvider(TextStyleFixture);
+                NetworkActions::SetAnnotationHandler(CaptureAnnotations);
                 if(!content.CreateView(&frame,107))++errors;
                 else
                 {
@@ -498,9 +505,18 @@ public:
                     annotations->GetDlgItemText(DG_STATUS,value);if(value.Find(L"positive value")<0)++errors;
                     annotations->SetDlgItemText(DG_TEXT_HEIGHT,L"150");annotations->SetDlgItemText(DG_OFFSET,L"0");
                     annotations->SendDlgItemMessage(DG_GENERATE,BM_CLICK);Pump();
-                    annotations->GetDlgItemText(DG_STATUS,value);if(value.Find(L"generate / regenerate annotations")<0)++errors;
+                    if(!annotationRequest || annotationRequest->remove || annotationRequest->network_id!="NET-002" ||
+                        annotationRequest->settings.text_height_mm!=150 || annotationRequest->settings.offset_mm!=0 ||
+                        annotationRequest->settings.text_style!=L"Standard" || annotationRequest->settings.layer!=L"0")++errors;
+                    auto* styleSearch=static_cast<SearchableComboBox*>(annotations->GetDlgItem(DG_TEXT_STYLE));
+                    styleSearch->SetWindowText(L"HVAC");
+                    annotations->SendMessage(WM_COMMAND,MAKEWPARAM(DG_TEXT_STYLE,CBN_EDITCHANGE),reinterpret_cast<LPARAM>(styleSearch->m_hWnd));
+                    if(styleSearch->GetCount()!=1)++errors;
+                    styleSearch->ShowDropDown(FALSE);styleSearch->SetWindowText(L"Office HVAC");
+                    annotations->SendDlgItemMessage(DG_GENERATE,BM_CLICK);Pump();
+                    if(!annotationRequest || annotationRequest->settings.text_style!=L"Office HVAC")++errors;
                     annotations->SendDlgItemMessage(DG_REMOVE,BM_CLICK);Pump();
-                    annotations->GetDlgItemText(DG_STATUS,value);if(value.Find(L"remove generated annotations")<0 || value.Find(L"Drawing unchanged")<0)++errors;
+                    if(!annotationRequest || !annotationRequest->remove || annotationRequest->network_id!="NET-002")++errors;
                     annotations->SendMessage(WM_VSCROLL,SB_TOP);Pump();Capture(content,L"drawing-annotations-top.png");
                     annotations->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();Capture(content,L"drawing-annotations-bottom.png");
                     for(int i=0;i<12;++i){content.MoveWindow(0,0,i%2?540:460,i%2?740:340);change(i%2);content.GetDlgItem(6601+i%2)->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();content.GetDlgItem(6601+i%2)->SendMessage(WM_VSCROLL,SB_TOP);Pump();}
@@ -511,6 +527,8 @@ public:
                 }
                 NetworkActions::SetGeometryHandler(nullptr);
                 NetworkActions::SetLayerProvider(nullptr);
+                NetworkActions::SetTextStyleProvider(nullptr);
+                NetworkActions::SetAnnotationHandler(nullptr);
                 fwprintf(log,L"Drawing Generation: tabs, network synchronization, defaults, validation, geometry requests, retained edits and resize/scroll cycles. Errors: %d\n",errors);
             }
 

@@ -63,6 +63,9 @@ NetworkGenerationResult DsdApplication::prepare_network_generation(const std::st
     const auto& record = registered_network_record(id);
     auto result = network_geometry_generator_.generate(record.network, fittings);
     result.source_revision = record.revision;
+    result.geometry_revision = record.geometry_revision + 1;
+    if (record.annotation_settings)
+        result.annotations = duct_annotation_factory_.create(result, *record.annotation_settings);
     return result;
 }
 void DsdApplication::commit_network_generation(NetworkGenerationResult result) {
@@ -71,11 +74,36 @@ void DsdApplication::commit_network_generation(NetworkGenerationResult result) {
         throw std::invalid_argument("Network changed after geometry preparation; regenerate it");
     if (!result.system || result.geometry.empty())
         throw std::invalid_argument("Cannot publish an incomplete generation result");
+    if (result.geometry_revision != record.geometry_revision + 1)
+        throw std::invalid_argument("Geometry changed after preparation; regenerate it");
+    registered_networks_.at(result.network_id).geometry_revision = result.geometry_revision;
     registered_networks_.at(result.network_id).generation = std::move(result);
 }
 void DsdApplication::clear_network_generation(const std::string& id) {
     (void)registered_network_record(id);
     registered_networks_.at(id).generation.reset();
+    registered_networks_.at(id).annotation_settings.reset();
 }
 void DsdApplication::clear_networks() noexcept { registered_networks_.clear(); }
+AnnotationGenerationResult DsdApplication::prepare_network_annotations(const std::string& id,
+    const AnnotationSettings& settings) const {
+    const auto& generation = registered_network_record(id).generation;
+    if (!generation) throw std::invalid_argument("Generate duct geometry before generating annotations");
+    return duct_annotation_factory_.create(*generation, settings);
+}
+void DsdApplication::commit_network_annotations(AnnotationGenerationResult result) {
+    const auto& record = registered_network_record(result.network_id);
+    if (!record.generation || result.source_revision != record.revision ||
+        result.geometry_revision != record.geometry_revision)
+        throw std::invalid_argument("Geometry changed after annotation preparation; regenerate annotations");
+    result.settings.validate();
+    registered_networks_.at(result.network_id).annotation_settings = result.settings;
+    registered_networks_.at(result.network_id).generation->annotations = std::move(result);
+}
+void DsdApplication::clear_network_annotations(const std::string& id) {
+    (void)registered_network_record(id);
+    auto& record = registered_networks_.at(id);
+    record.annotation_settings.reset();
+    if (record.generation) record.generation->annotations.reset();
+}
 } // namespace dsd::application

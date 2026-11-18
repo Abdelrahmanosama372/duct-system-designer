@@ -4,7 +4,8 @@
 namespace {
 NetworkActions::Handler handler = nullptr;
 NetworkActions::GeometryHandler geometryHandler = nullptr;
-NetworkActions::LayerProvider layerProvider = nullptr;
+NetworkActions::LayerProvider layerProvider = nullptr, textStyleProvider = nullptr;
+NetworkActions::AnnotationHandler annotationHandler = nullptr;
 }
 void NetworkActions::SetHandler(Handler value) { handler = value; }
 void NetworkActions::SetLayerProvider(LayerProvider value) { layerProvider = value; }
@@ -27,5 +28,16 @@ bool NetworkActions::Request(Action action, HWND notifyWindow) {
     if (handler)
         return handler(action, notifyWindow);
     NetworkSession::Current().message = L"Drawing selection requires AutoCAD.";
+    return false;
+}
+
+void NetworkActions::SetTextStyleProvider(LayerProvider value) { textStyleProvider = value; }
+std::vector<std::wstring> NetworkActions::DrawingTextStyles() {
+    return textStyleProvider ? textStyleProvider() : std::vector<std::wstring>{};
+}
+void NetworkActions::SetAnnotationHandler(AnnotationHandler value) { annotationHandler = value; }
+bool NetworkActions::RequestAnnotations(const AnnotationRequest& request, HWND window) {
+    if (annotationHandler) return annotationHandler(request, window);
+    NetworkSession::Current().message = L"Annotation drawing requires AutoCAD.";
     return false;
 }

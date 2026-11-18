@@ -1,4 +1,5 @@
 #include "autocad/database/GeneratedGeometry.h"
+#include "autocad/database/AnnotationWriter.h"
 #include "autocad/ui/platform/ObjectArx.h"
 #include "dbcolor.h"
 #include "dbents.h"
@@ -14,7 +15,10 @@ namespace Autocad::GeneratedGeometry {
 namespace {
 using namespace dsd::geometry;
 constexpr const wchar_t *appName = L"DSD_GEOMETRY";
-std::map<std::string, std::vector<AcDbObjectId>> displayed;
+struct DisplayedNetwork {
+    std::vector<AcDbObjectId> geometry, annotations;
+};
+std::map<std::string, DisplayedNetwork> displayed;
 void check(Acad::ErrorStatus status, const char *message) {
     if (status != Acad::eOk)
         throw std::runtime_error(message);
@@ -211,18 +215,43 @@ void Replace(AcDbDatabase &database, AcDbObjectId space, double scale,
                     centerlineLayer, centerLinetype);
         }
     }
-    erase(transaction, previous);
+    std::vector<AcDbObjectId> annotations;
+    if (result.annotations)
+        annotations = AnnotationWriter::Append(database, *owner, scale, *result.annotations);
+    erase(transaction, previous.annotations);
+    erase(transaction, previous.geometry);
     transaction.commit();
-    previous.swap(created);
+    previous.geometry.swap(created);
+    previous.annotations.swap(annotations);
 }
 void Remove(AcDbDatabase &database, const dsd::application::DuctNetwork &network) {
     const auto found = displayed.find(key(network));
     if (found == displayed.end())
         return;
     Transaction transaction{database};
-    erase(transaction, found->second);
+    erase(transaction, found->second.annotations);
+    erase(transaction, found->second.geometry);
     transaction.commit();
     displayed.erase(found);
+}
+void ReplaceAnnotations(AcDbDatabase& database, AcDbObjectId space, double scale,
+    const dsd::application::DuctNetwork& network,
+    const dsd::application::AnnotationGenerationResult& result) {
+    auto& previous = displayed[key(network)];
+    Transaction transaction{database};
+    auto* owner = transaction.get<AcDbBlockTableRecord>(space, AcDb::kForWrite);
+    auto created = AnnotationWriter::Append(database, *owner, scale, result);
+    erase(transaction, previous.annotations);
+    transaction.commit();
+    previous.annotations.swap(created);
+}
+void RemoveAnnotations(AcDbDatabase& database, const dsd::application::DuctNetwork& network) {
+    const auto found = displayed.find(key(network));
+    if (found == displayed.end()) return;
+    Transaction transaction{database};
+    erase(transaction, found->second.annotations);
+    transaction.commit();
+    found->second.annotations.clear();
 }
 bool IsGenerated(const AcDbEntity &entity) {
     auto *data = entity.xData(appName);

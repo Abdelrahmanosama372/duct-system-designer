@@ -34,6 +34,7 @@ struct Pending {
     NetworkActions::Action action;
     AcApDocument* document;
     std::optional<NetworkActions::GeometryRequest> geometry;
+    std::optional<NetworkActions::AnnotationRequest> annotations;
 };
 std::optional<Pending> pending;
 struct DisplayedNetwork {
@@ -481,6 +482,31 @@ std::vector<std::wstring> drawing_layers() {
     }
     return layers;
 }
+std::vector<std::wstring> drawing_text_styles() {
+    auto* document = acDocManager->mdiActiveDocument();
+    if (!document) return {};
+    auto table = open<AcDbTextStyleTable>(document->database()->textStyleTableId());
+    AcDbTextStyleTableIterator* raw = nullptr;
+    check(table->newIterator(raw), "Could not enumerate drawing text styles");
+    std::unique_ptr<AcDbTextStyleTableIterator> iterator{raw};
+    std::vector<std::wstring> styles;
+    for (; !iterator->done(); iterator->step()) {
+        AcDbObjectId id;
+        check(iterator->getRecordId(id), "Could not read drawing text style ID");
+        auto record = open<AcDbTextStyleTableRecord>(id);
+        AcString name;
+        check(record->getName(name), "Could not read drawing text style name");
+        styles.emplace_back(name.kACharPtr());
+    }
+    return styles;
+}
+bool request_annotations(const NetworkActions::AnnotationRequest& annotations, HWND window) {
+    if (!request(annotations.remove ? NetworkActions::Action::RemoveAnnotations
+                                   : NetworkActions::Action::GenerateAnnotations, window)) return false;
+    pending->annotations = annotations;
+    NetworkSession::Current().message = annotations.remove ? L"Removing annotations..." : L"Generating duct annotations...";
+    return true;
+}
 bool request_geometry(const NetworkActions::GeometryRequest& geometry, HWND window) {
     if (!request(geometry.remove ? NetworkActions::Action::RemoveGeometry
                                 : NetworkActions::Action::GenerateGeometry, window)) return false;
@@ -497,12 +523,16 @@ void Autocad::Network::Initialize() {
     NetworkActions::SetHandler(request);
     NetworkActions::SetGeometryHandler(request_geometry);
     NetworkActions::SetLayerProvider(drawing_layers);
+    NetworkActions::SetTextStyleProvider(drawing_text_styles);
+    NetworkActions::SetAnnotationHandler(request_annotations);
 }
 void Autocad::Network::Shutdown() {
     Autocad::VisualizationSelection::Shutdown();
     NetworkActions::SetHandler(nullptr);
     NetworkActions::SetGeometryHandler(nullptr);
     NetworkActions::SetLayerProvider(nullptr);
+    NetworkActions::SetTextStyleProvider(nullptr);
+    NetworkActions::SetAnnotationHandler(nullptr);
     Autocad::GeneratedGeometry::Clear();
     acDocManager->removeReactor(&documentReactor);
     pending.reset();
@@ -524,6 +554,26 @@ void Autocad::Network::ExecutePendingAction() {
         const auto space = database->currentSpaceId();
         const double scale = millimetres_per_unit(*database);
         const auto key = document_key(*database, space);
+        if (operation.annotations) {
+            const auto& options = *operation.annotations;
+            auto& application = DuctUi::Application();
+            const auto& network = application.registered_network(options.network_id);
+            if (network.document_key != key)
+                throw std::invalid_argument("Activate the network's source drawing and layout before generating annotations");
+            if (options.remove) {
+                Autocad::GeneratedGeometry::RemoveAnnotations(*database, network);
+                application.clear_network_annotations(network.id);
+                session.message = L"Annotations removed. Duct geometry retained.";
+            } else {
+                auto result = application.prepare_network_annotations(network.id, options.settings);
+                Autocad::GeneratedGeometry::ReplaceAnnotations(*database, space, scale, network, result);
+                application.commit_network_annotations(std::move(result));
+                session.message = L"Duct annotations generated.";
+            }
+            session.busy = false;
+            NetworkSession::Notify();
+            return;
+        }
         if (operation.geometry) {
             const auto& options = *operation.geometry;
             auto& application = DuctUi::Application();

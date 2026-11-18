@@ -48,6 +48,7 @@ add_executable(application_tests
     application/test_network_batch_properties.cpp
     application/test_network_registration.cpp
     application/test_network_generation.cpp
+    application/test_duct_annotations.cpp
 )
 dsd_add_application_sources(application_tests)
 target_link_libraries(application_tests PRIVATE GTest::gtest_main)

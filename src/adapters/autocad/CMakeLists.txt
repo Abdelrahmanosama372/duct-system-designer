@@ -43,6 +43,7 @@ add_library(DuctSystemDesignerUi MODULE
     src/commands/UiCommands.cpp
     src/database/NetworkInteraction.cpp
     src/database/GeneratedGeometry.cpp
+    src/database/AnnotationWriter.cpp
     src/database/VisualizationSelection.cpp
     src/ui/PalettePage.cpp
     src/ui/controls/UiButton.cpp

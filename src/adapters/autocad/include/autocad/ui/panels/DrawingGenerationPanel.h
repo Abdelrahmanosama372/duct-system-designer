@@ -21,22 +21,26 @@ enum DrawingControl : UINT
 class DrawingGenerationPage : public ScrollPage
 {
     bool m_annotations;
-    SearchableComboBox& LayerCombo(UINT id) {
+    SearchableComboBox& DrawingChoice(UINT id) {
         return *static_cast<SearchableComboBox*>(GetDlgItem(id));
     }
-    void CreateLayerCombo(UINT id) {
+    void CreateDrawingChoice(UINT id) {
         auto& combo=Control<SearchableComboBox>(L"",CBS_DROPDOWN|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL,id);
         combo.ConfigureSpacing();
     }
-    void RefreshLayers() {
-        if(m_annotations)return;
+    void RefreshDrawingChoices() {
         try {
             const auto layers=NetworkActions::DrawingLayers();
-            LayerCombo(DG_DUCT_LAYER).SetItems(layers,L"M-HVAC-DUCT");
-            LayerCombo(DG_CENTERLINE_LAYER).SetItems(layers,L"M-HVAC-CENTERLINE");
+            if(m_annotations) {
+                DrawingChoice(DG_TEXT_LAYER).SetItems(layers,L"M-HVAC-TEXT");
+                DrawingChoice(DG_TEXT_STYLE).SetItems(NetworkActions::DrawingTextStyles(),L"Standard");
+            } else {
+                DrawingChoice(DG_DUCT_LAYER).SetItems(layers,L"M-HVAC-DUCT");
+                DrawingChoice(DG_CENTERLINE_LAYER).SetItems(layers,L"M-HVAC-CENTERLINE");
+            }
         } catch(const std::exception& error) {
-            LayerCombo(DG_DUCT_LAYER).SetItems({},L"");
-            LayerCombo(DG_CENTERLINE_LAYER).SetItems({},L"");
+            DrawingChoice(m_annotations?DG_TEXT_LAYER:DG_DUCT_LAYER).SetItems({},L"");
+            DrawingChoice(m_annotations?DG_TEXT_STYLE:DG_CENTERLINE_LAYER).SetItems({},L"");
             SetDlgItemText(DG_STATUS,CString(error.what()));
         }
     }
@@ -51,7 +55,7 @@ class DrawingGenerationPage : public ScrollPage
     {
         const int full=PageWidth()-56,labelWidth=210;
         Place(label,28,y, labelWidth-12,34);
-        const int dropHeight=(field==DG_DUCT_LAYER || field==DG_CENTERLINE_LAYER)?220:240;
+        const int dropHeight=(field==DG_DUCT_LAYER || field==DG_CENTERLINE_LAYER || field==DG_TEXT_LAYER || field==DG_TEXT_STYLE)?220:240;
         Place(field,28+labelWidth,y,full-labelWidth,combo?dropHeight:34);
     }
     bool WithCenterlines() const {
@@ -131,8 +135,8 @@ protected:
             Label(L"Takeoff length (mm)",DG_TAKEOFF_LABEL);Edit(DG_TAKEOFF,L"150");
             Label(L"Elbow inside-radius ratio",DG_ELBOW_LABEL);Combo(DG_ELBOW,{L"1",L"1.5",L"2"});
             static_cast<CComboBox*>(GetDlgItem(DG_ELBOW))->SetCurSel(1);
-            Label(L"Duct geometry layer",DG_DUCT_LAYER_LABEL);CreateLayerCombo(DG_DUCT_LAYER);
-            Label(L"Duct centerline layer",DG_CENTERLINE_LAYER_LABEL);CreateLayerCombo(DG_CENTERLINE_LAYER);
+            Label(L"Duct geometry layer",DG_DUCT_LAYER_LABEL);CreateDrawingChoice(DG_DUCT_LAYER);
+            Label(L"Duct centerline layer",DG_CENTERLINE_LAYER_LABEL);CreateDrawingChoice(DG_CENTERLINE_LAYER);
             UpdateCenterlineControls();
         }
         else
@@ -141,8 +145,8 @@ protected:
             Label(L"Airflow",DG_FLOW_LABEL);Control<CButton>(L"Flow (CFM)",BS_AUTOCHECKBOX,DG_FLOW).SetCheck(BST_CHECKED);
             Label(L"Bottom of duct",DG_BOD_LABEL);Control<CButton>(L"BOD",BS_AUTOCHECKBOX,DG_BOD).SetCheck(BST_CHECKED);
             Label(L"Text height (mm)",DG_TEXT_HEIGHT_LABEL);Edit(DG_TEXT_HEIGHT,L"150");
-            Label(L"Text style",DG_TEXT_STYLE_LABEL);Combo(DG_TEXT_STYLE,{L"Standard",L"Annotative",L"HVAC Notes"});
-            Label(L"Text layer",DG_TEXT_LAYER_LABEL);Combo(DG_TEXT_LAYER,{L"M-HVAC-TEXT",L"M-HVAC-ANNOTATIONS",L"0"});
+            Label(L"Text style",DG_TEXT_STYLE_LABEL);CreateDrawingChoice(DG_TEXT_STYLE);
+            Label(L"Text layer",DG_TEXT_LAYER_LABEL);CreateDrawingChoice(DG_TEXT_LAYER);
             Label(L"Placement",DG_PLACEMENT_LABEL);Combo(DG_PLACEMENT,{L"Above Duct",L"Below Duct",L"Centered on Duct"});
             Label(L"Offset from duct (mm)",DG_OFFSET_LABEL);Edit(DG_OFFSET,L"100");
         }
@@ -150,14 +154,14 @@ protected:
         static_cast<UiButton*>(GetDlgItem(DG_GENERATE))->SetRole(UiStyle::ButtonRole::Generation);
         Control<CButton>(m_annotations?L"Remove Generated Annotations":L"Remove Generated Geometry",BS_PUSHBUTTON,DG_REMOVE);
         static_cast<UiButton*>(GetDlgItem(DG_REMOVE))->SetRole(UiStyle::ButtonRole::Removal);
-        Label(m_annotations?L"Annotation generation is not connected yet.":L"Select a registered network to generate geometry.",DG_STATUS);
+        Label(m_annotations?L"Generate network geometry before generating annotations.":L"Select a registered network to generate geometry.",DG_STATUS);
         UiStyle::TextColor(*GetDlgItem(DG_STATUS),UiStyle::ProjectReferenceStyle.muted);
         NetworkSession::Attach(GetSafeHwnd());
         RefreshNetworks();m_contentHeight=m_annotations?1144:1002;m_layoutReady=true;Relayout();return 0;
     }
     afx_msg void OnDestroy(){NetworkSession::Detach(GetSafeHwnd());ScrollPage::OnDestroy();}
     afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM) {
-        if(!m_annotations)SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
+        SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
         return 0;
     }
     afx_msg BOOL OnEraseBkgnd(CDC* dc)
@@ -168,9 +172,10 @@ protected:
     BOOL OnCommand(WPARAM wp,LPARAM lp) override
     {
         const UINT id=LOWORD(wp),code=HIWORD(wp);
-        if(!m_annotations && (id==DG_DUCT_LAYER || id==DG_CENTERLINE_LAYER)) {
-            if(code==CBN_EDITCHANGE){LayerCombo(id).FilterEdit();return TRUE;}
-            if(code==CBN_SETFOCUS){RefreshLayers();return TRUE;}
+        if((!m_annotations && (id==DG_DUCT_LAYER || id==DG_CENTERLINE_LAYER)) ||
+           (m_annotations && (id==DG_TEXT_LAYER || id==DG_TEXT_STYLE))) {
+            if(code==CBN_EDITCHANGE){DrawingChoice(id).FilterEdit();return TRUE;}
+            if(code==CBN_SETFOCUS){RefreshDrawingChoices();return TRUE;}
         }
         if(id==DG_REP && code==CBN_SELCHANGE && !m_annotations) {
             UpdateCenterlineControls();return TRUE;
@@ -204,13 +209,13 @@ protected:
                     GetDlgItemText(DG_REDUCER,text);request.reducer_length_mm=std::wcstod(text.GetString(),nullptr);
                     GetDlgItemText(DG_TAKEOFF,text);request.takeoff_length_mm=std::wcstod(text.GetString(),nullptr);
                     GetDlgItemText(DG_ELBOW,text);request.elbow_inside_radius_ratio=std::wcstod(text.GetString(),nullptr);
-                    if(!LayerCombo(DG_DUCT_LAYER).SelectedValue(request.duct_layer)) {
+                    if(!DrawingChoice(DG_DUCT_LAYER).SelectedValue(request.duct_layer)) {
                         SetDlgItemText(DG_STATUS,L"Select an existing duct geometry layer from the list.");return TRUE;
                     }
                     request.representation=WithCenterlines()?NetworkActions::GeometryRepresentation::OutlineWithCenterlines:
                         NetworkActions::GeometryRepresentation::Outline;
                     if(WithCenterlines()) {
-                        if(!LayerCombo(DG_CENTERLINE_LAYER).SelectedValue(request.centerline_layer)) {
+                        if(!DrawingChoice(DG_CENTERLINE_LAYER).SelectedValue(request.centerline_layer)) {
                             SetDlgItemText(DG_STATUS,L"Select an existing duct centerline layer from the list.");return TRUE;
                         }
                     }
@@ -219,9 +224,28 @@ protected:
                 SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
                 return TRUE;
             }
-            CString network;GetDlgItemText(DG_NETWORK,network);CString message;
-            message.Format(L"Preview: %s %s for %s. Drawing unchanged.",id==DG_REMOVE?L"remove generated":L"generate / regenerate",
-                m_annotations?L"annotations":L"geometry",network.GetString());SetDlgItemText(DG_STATUS,message);return TRUE;
+            NetworkActions::AnnotationRequest request;
+            request.network_id=dsd::application::network_item_id("NET",static_cast<int>(combo->GetItemData(combo->GetCurSel())));
+            request.remove=id==DG_REMOVE;
+            if(!request.remove) {
+                auto& settings=request.settings;
+                settings.flow=IsDlgButtonChecked(DG_FLOW)==BST_CHECKED;
+                settings.dimensions=IsDlgButtonChecked(DG_DIM)==BST_CHECKED;
+                settings.bod=IsDlgButtonChecked(DG_BOD)==BST_CHECKED;
+                CString text;
+                GetDlgItemText(DG_TEXT_HEIGHT,text);settings.text_height_mm=std::wcstod(text.GetString(),nullptr);
+                GetDlgItemText(DG_OFFSET,text);settings.offset_mm=std::wcstod(text.GetString(),nullptr);
+                const int placement=static_cast<CComboBox*>(GetDlgItem(DG_PLACEMENT))->GetCurSel();
+                using dsd::application::AnnotationPlacement;
+                settings.placement=placement==0?AnnotationPlacement::Above:placement==1?AnnotationPlacement::Below:AnnotationPlacement::Centered;
+                if(!DrawingChoice(DG_TEXT_LAYER).SelectedValue(settings.layer) ||
+                   !DrawingChoice(DG_TEXT_STYLE).SelectedValue(settings.text_style)) {
+                    SetDlgItemText(DG_STATUS,L"Select an existing drawing layer and text style.");return TRUE;
+                }
+            }
+            NetworkActions::RequestAnnotations(request,GetSafeHwnd());
+            SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
+            return TRUE;
         }
         return ScrollPage::OnCommand(wp,lp);
     }
@@ -230,7 +254,7 @@ public:
     explicit DrawingGenerationPage(bool annotations):m_annotations(annotations){}
     void RefreshNetworks()
     {
-        RefreshLayers();
+        RefreshDrawingChoices();
         auto* combo=static_cast<CComboBox*>(GetDlgItem(DG_NETWORK));combo->ResetContent();int selected=-1;
         for(const auto& network:NetworkSession::Drafts())
         {

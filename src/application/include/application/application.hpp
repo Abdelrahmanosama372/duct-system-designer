@@ -35,6 +35,10 @@ class DsdApplication {
         const ductsystem::FittingSizingConfig& fittings) const;
     void commit_network_generation(NetworkGenerationResult result);
     void clear_network_generation(const std::string& id);
+    [[nodiscard]] AnnotationGenerationResult prepare_network_annotations(const std::string& id,
+        const AnnotationSettings& settings) const;
+    void commit_network_annotations(AnnotationGenerationResult result);
+    void clear_network_annotations(const std::string& id);
     void clear_networks() noexcept;
 
   private:
@@ -45,6 +49,7 @@ class DsdApplication {
     VisualizationTextFactory visualization_text_factory_;
     std::optional<ProjectInformation> project_information_;
     NetworkGeometryGenerator network_geometry_generator_;
+    DuctAnnotationFactory duct_annotation_factory_;
     std::map<std::string, RegisteredNetwork> registered_networks_;
 };
 

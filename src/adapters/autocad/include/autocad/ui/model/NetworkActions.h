@@ -1,5 +1,6 @@
 #pragma once
 #include "autocad/ui/platform/Mfc.h"
+#include "application/duct_annotations.hpp"
 #include <string>
 #include <vector>
 
@@ -13,7 +14,9 @@ enum class Action {
     RefreshLabels,
     FinishPropertyApply,
     GenerateGeometry,
-    RemoveGeometry
+    RemoveGeometry,
+    GenerateAnnotations,
+    RemoveAnnotations
 };
 enum class GeometryRepresentation { Outline, OutlineWithCenterlines };
 struct GeometryRequest {
@@ -25,8 +28,18 @@ struct GeometryRequest {
     std::wstring duct_layer = L"M-HVAC-DUCT", centerline_layer = L"M-HVAC-CENTERLINE";
     bool remove = false;
 };
-using GeometryHandler = bool (*)(const GeometryRequest&, HWND);
+struct AnnotationRequest {
+    std::string network_id;
+    dsd::application::AnnotationSettings settings;
+    bool remove = false;
+};
 using LayerProvider = std::vector<std::wstring> (*)();
+using AnnotationHandler = bool (*)(const AnnotationRequest&, HWND);
+void SetAnnotationHandler(AnnotationHandler handler);
+bool RequestAnnotations(const AnnotationRequest& request, HWND notifyWindow);
+void SetTextStyleProvider(LayerProvider provider);
+std::vector<std::wstring> DrawingTextStyles();
+using GeometryHandler = bool (*)(const GeometryRequest&, HWND);
 void SetLayerProvider(LayerProvider provider);
 std::vector<std::wstring> DrawingLayers();
 void SetGeometryHandler(GeometryHandler handler);
