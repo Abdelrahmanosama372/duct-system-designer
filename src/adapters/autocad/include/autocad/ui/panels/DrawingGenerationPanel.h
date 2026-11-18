@@ -2,16 +2,18 @@
 #include "autocad/ui/layout/TabbedContent.h"
 #include "autocad/ui/model/NetworkSession.h"
 #include "autocad/ui/model/NetworkActions.h"
+#include "autocad/ui/controls/SearchableComboBox.h"
 #include <array>
 #include <cmath>
 #include <cwchar>
+#include <exception>
 
 namespace DrawingPreview { inline int networkId=1; }
 enum DrawingControl : UINT
 {
     DG_TITLE=6100,DG_SUBTITLE,DG_NETWORK_LABEL,DG_NETWORK,DG_SECTION_ONE,DG_SECTION_TWO,DG_SECTION_THREE,
     DG_REP_LABEL,DG_REP,DG_REDUCER_LABEL,DG_REDUCER,DG_TAKEOFF_LABEL,DG_TAKEOFF,DG_ELBOW_LABEL,DG_ELBOW,
-    DG_DUCT_LAYER_LABEL,DG_DUCT_LAYER,DG_FITTING_LAYER_LABEL,DG_FITTING_LAYER,
+    DG_DUCT_LAYER_LABEL,DG_DUCT_LAYER,DG_CENTERLINE_LAYER_LABEL,DG_CENTERLINE_LAYER,
     DG_DIM_LABEL,DG_DIM,DG_FLOW_LABEL,DG_FLOW,DG_BOD_LABEL,DG_BOD,
     DG_TEXT_HEIGHT_LABEL,DG_TEXT_HEIGHT,DG_TEXT_STYLE_LABEL,DG_TEXT_STYLE,DG_TEXT_LAYER_LABEL,DG_TEXT_LAYER,
     DG_PLACEMENT_LABEL,DG_PLACEMENT,DG_OFFSET_LABEL,DG_OFFSET,DG_GENERATE,DG_REMOVE,DG_STATUS
@@ -19,6 +21,25 @@ enum DrawingControl : UINT
 class DrawingGenerationPage : public ScrollPage
 {
     bool m_annotations;
+    SearchableComboBox& LayerCombo(UINT id) {
+        return *static_cast<SearchableComboBox*>(GetDlgItem(id));
+    }
+    void CreateLayerCombo(UINT id) {
+        auto& combo=Control<SearchableComboBox>(L"",CBS_DROPDOWN|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS|WS_VSCROLL,id);
+        combo.ConfigureSpacing();
+    }
+    void RefreshLayers() {
+        if(m_annotations)return;
+        try {
+            const auto layers=NetworkActions::DrawingLayers();
+            LayerCombo(DG_DUCT_LAYER).SetItems(layers,L"M-HVAC-DUCT");
+            LayerCombo(DG_CENTERLINE_LAYER).SetItems(layers,L"M-HVAC-CENTERLINE");
+        } catch(const std::exception& error) {
+            LayerCombo(DG_DUCT_LAYER).SetItems({},L"");
+            LayerCombo(DG_CENTERLINE_LAYER).SetItems({},L"");
+            SetDlgItemText(DG_STATUS,CString(error.what()));
+        }
+    }
     void Combo(UINT id,std::initializer_list<LPCTSTR> items)
     {
         auto& combo=Control<CComboBox>(L"",CBS_DROPDOWNLIST|WS_VSCROLL,id);
@@ -30,7 +51,16 @@ class DrawingGenerationPage : public ScrollPage
     {
         const int full=PageWidth()-56,labelWidth=210;
         Place(label,28,y, labelWidth-12,34);
-        Place(field,28+labelWidth,y,full-labelWidth,combo?240:34);
+        const int dropHeight=(field==DG_DUCT_LAYER || field==DG_CENTERLINE_LAYER)?220:240;
+        Place(field,28+labelWidth,y,full-labelWidth,combo?dropHeight:34);
+    }
+    bool WithCenterlines() const {
+        return !m_annotations && static_cast<CComboBox*>(GetDlgItem(DG_REP))->GetCurSel()==1;
+    }
+    void UpdateCenterlineControls() {
+        const int show=WithCenterlines()?SW_SHOW:SW_HIDE;
+        GetDlgItem(DG_CENTERLINE_LAYER_LABEL)->ShowWindow(show);
+        GetDlgItem(DG_CENTERLINE_LAYER)->ShowWindow(show);
     }
     bool Valid(UINT id,bool allowZero)
     {
@@ -60,7 +90,7 @@ protected:
             Row(DG_REDUCER_LABEL,DG_REDUCER,430,false);Row(DG_TAKEOFF_LABEL,DG_TAKEOFF,486,false);
             Row(DG_ELBOW_LABEL,DG_ELBOW,542);
             Place(DG_SECTION_THREE,28,612,full,28);
-            Row(DG_DUCT_LAYER_LABEL,DG_DUCT_LAYER,660);Row(DG_FITTING_LAYER_LABEL,DG_FITTING_LAYER,716);
+            Row(DG_DUCT_LAYER_LABEL,DG_DUCT_LAYER,660);Row(DG_CENTERLINE_LAYER_LABEL,DG_CENTERLINE_LAYER,716);
         }
         else
         {
@@ -96,13 +126,14 @@ protected:
         for(int i=0;i<3;++i)static_cast<UiHeading*>(GetDlgItem(headings[i]))->SetNumber(i+2);
         if(!m_annotations)
         {
-            Label(L"Duct representation",DG_REP_LABEL);Combo(DG_REP,{L"Rectangular Hatch",L"Rectangular Outline",L"Centerline"});
+            Label(L"Duct representation",DG_REP_LABEL);Combo(DG_REP,{L"Duct lines",L"Duct lines with centerlines"});
             Label(L"Reducer length (mm)",DG_REDUCER_LABEL);Edit(DG_REDUCER,L"300");
             Label(L"Takeoff length (mm)",DG_TAKEOFF_LABEL);Edit(DG_TAKEOFF,L"150");
             Label(L"Elbow inside-radius ratio",DG_ELBOW_LABEL);Combo(DG_ELBOW,{L"1",L"1.5",L"2"});
             static_cast<CComboBox*>(GetDlgItem(DG_ELBOW))->SetCurSel(1);
-            Label(L"Duct geometry layer",DG_DUCT_LAYER_LABEL);Combo(DG_DUCT_LAYER,{L"M-HVAC-DUCT",L"M-HVAC-GEOMETRY",L"0"});
-            Label(L"Fitting geometry layer",DG_FITTING_LAYER_LABEL);Combo(DG_FITTING_LAYER,{L"M-HVAC-FITTINGS",L"M-HVAC-DUCT",L"0"});
+            Label(L"Duct geometry layer",DG_DUCT_LAYER_LABEL);CreateLayerCombo(DG_DUCT_LAYER);
+            Label(L"Duct centerline layer",DG_CENTERLINE_LAYER_LABEL);CreateLayerCombo(DG_CENTERLINE_LAYER);
+            UpdateCenterlineControls();
         }
         else
         {
@@ -137,6 +168,13 @@ protected:
     BOOL OnCommand(WPARAM wp,LPARAM lp) override
     {
         const UINT id=LOWORD(wp),code=HIWORD(wp);
+        if(!m_annotations && (id==DG_DUCT_LAYER || id==DG_CENTERLINE_LAYER)) {
+            if(code==CBN_EDITCHANGE){LayerCombo(id).FilterEdit();return TRUE;}
+            if(code==CBN_SETFOCUS){RefreshLayers();return TRUE;}
+        }
+        if(id==DG_REP && code==CBN_SELCHANGE && !m_annotations) {
+            UpdateCenterlineControls();return TRUE;
+        }
         if(id==DG_NETWORK && code==CBN_SELCHANGE)
         {
             auto* combo=static_cast<CComboBox*>(GetDlgItem(DG_NETWORK));const int row=combo->GetCurSel();
@@ -166,11 +204,16 @@ protected:
                     GetDlgItemText(DG_REDUCER,text);request.reducer_length_mm=std::wcstod(text.GetString(),nullptr);
                     GetDlgItemText(DG_TAKEOFF,text);request.takeoff_length_mm=std::wcstod(text.GetString(),nullptr);
                     GetDlgItemText(DG_ELBOW,text);request.elbow_inside_radius_ratio=std::wcstod(text.GetString(),nullptr);
-                    GetDlgItemText(DG_DUCT_LAYER,text);request.duct_layer=text.GetString();
-                    GetDlgItemText(DG_FITTING_LAYER,text);request.fitting_layer=text.GetString();
-                    const int mode=static_cast<CComboBox*>(GetDlgItem(DG_REP))->GetCurSel();
-                    request.representation=mode==0?NetworkActions::GeometryRepresentation::Hatch:
-                        mode==1?NetworkActions::GeometryRepresentation::Outline:NetworkActions::GeometryRepresentation::Centerline;
+                    if(!LayerCombo(DG_DUCT_LAYER).SelectedValue(request.duct_layer)) {
+                        SetDlgItemText(DG_STATUS,L"Select an existing duct geometry layer from the list.");return TRUE;
+                    }
+                    request.representation=WithCenterlines()?NetworkActions::GeometryRepresentation::OutlineWithCenterlines:
+                        NetworkActions::GeometryRepresentation::Outline;
+                    if(WithCenterlines()) {
+                        if(!LayerCombo(DG_CENTERLINE_LAYER).SelectedValue(request.centerline_layer)) {
+                            SetDlgItemText(DG_STATUS,L"Select an existing duct centerline layer from the list.");return TRUE;
+                        }
+                    }
                 }
                 NetworkActions::RequestGeometry(request,GetSafeHwnd());
                 SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
@@ -187,6 +230,7 @@ public:
     explicit DrawingGenerationPage(bool annotations):m_annotations(annotations){}
     void RefreshNetworks()
     {
+        RefreshLayers();
         auto* combo=static_cast<CComboBox*>(GetDlgItem(DG_NETWORK));combo->ResetContent();int selected=-1;
         for(const auto& network:NetworkSession::Drafts())
         {

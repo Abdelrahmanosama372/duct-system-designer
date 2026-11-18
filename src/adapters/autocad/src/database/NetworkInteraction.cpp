@@ -463,6 +463,24 @@ bool request(NetworkActions::Action action, HWND window) {
     }
     return true;
 }
+std::vector<std::wstring> drawing_layers() {
+    auto* document = acDocManager->mdiActiveDocument();
+    if (!document) return {};
+    auto table = open<AcDbLayerTable>(document->database()->layerTableId());
+    AcDbLayerTableIterator* raw = nullptr;
+    check(table->newIterator(raw), "Could not enumerate drawing layers");
+    std::unique_ptr<AcDbLayerTableIterator> iterator{raw};
+    std::vector<std::wstring> layers;
+    for (; !iterator->done(); iterator->step()) {
+        AcDbObjectId id;
+        check(iterator->getRecordId(id), "Could not read drawing layer ID");
+        auto record = open<AcDbLayerTableRecord>(id);
+        AcString name;
+        check(record->getName(name), "Could not read drawing layer name");
+        layers.emplace_back(name.kACharPtr());
+    }
+    return layers;
+}
 bool request_geometry(const NetworkActions::GeometryRequest& geometry, HWND window) {
     if (!request(geometry.remove ? NetworkActions::Action::RemoveGeometry
                                 : NetworkActions::Action::GenerateGeometry, window)) return false;
@@ -478,11 +496,13 @@ void Autocad::Network::Initialize() {
     acDocManager->addReactor(&documentReactor);
     NetworkActions::SetHandler(request);
     NetworkActions::SetGeometryHandler(request_geometry);
+    NetworkActions::SetLayerProvider(drawing_layers);
 }
 void Autocad::Network::Shutdown() {
     Autocad::VisualizationSelection::Shutdown();
     NetworkActions::SetHandler(nullptr);
     NetworkActions::SetGeometryHandler(nullptr);
+    NetworkActions::SetLayerProvider(nullptr);
     Autocad::GeneratedGeometry::Clear();
     acDocManager->removeReactor(&documentReactor);
     pending.reset();

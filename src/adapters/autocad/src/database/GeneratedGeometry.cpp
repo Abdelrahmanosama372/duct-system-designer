@@ -2,14 +2,12 @@
 #include "autocad/ui/platform/ObjectArx.h"
 #include "dbcolor.h"
 #include "dbents.h"
-#include "dbhatch.h"
 #include "dbpl.h"
 #include "dbsymtb.h"
 #include "dbtrans.h"
 #include <algorithm>
 #include <cmath>
 #include <memory>
-#include <set>
 #include <stdexcept>
 
 namespace Autocad::GeneratedGeometry {
@@ -76,6 +74,28 @@ AcDbObjectId layer(AcDbDatabase &database, Transaction &transaction, const std::
         check(table->add(id, record.get()), "Could not create geometry layer");
         record.release()->close(); // Creation is still covered by the transaction.
     }
+    return id;
+}
+AcDbObjectId ensure_center_linetype(AcDbDatabase &database) {
+    const auto find = [&]() {
+        AcDbLinetypeTable *table = nullptr;
+        check(database.getLinetypeTable(table, AcDb::kForRead), "Could not read drawing linetypes");
+        AcDbObjectId id;
+        const auto status = table->getAt(L"CENTER", id);
+        table->close();
+        if (status != Acad::eOk && status != Acad::eKeyNotFound)
+            check(status, "Could not read CENTER linetype");
+        return id;
+    };
+    auto id = find();
+    if (!id.isNull())
+        return id;
+    // Use AutoCAD's support search path; allow either standard linetype library.
+    if (database.loadLineTypeFile(L"CENTER", L"acadiso.lin") != Acad::eOk)
+        check(database.loadLineTypeFile(L"CENTER", L"acad.lin"), "Could not load CENTER linetype");
+    id = find();
+    if (id.isNull())
+        throw std::runtime_error("CENTER linetype was not loaded");
     return id;
 }
 void register_app(AcDbDatabase &database, Transaction &transaction) {
@@ -155,57 +175,41 @@ void Replace(AcDbDatabase &database, AcDbObjectId space, double scale,
     std::vector<AcDbObjectId> created;
     Transaction transaction{database};
     const auto ductLayer = layer(database, transaction, request.duct_layer, network.color_index);
-    const auto fittingLayer =
-        layer(database, transaction, request.fitting_layer, network.color_index);
+    const bool withCenterlines = request.representation ==
+        NetworkActions::GeometryRepresentation::OutlineWithCenterlines;
+    AcDbObjectId centerlineLayer, centerLinetype;
+    if (withCenterlines) {
+        centerLinetype = ensure_center_linetype(database);
+        centerlineLayer = layer(database, transaction, request.centerline_layer, network.color_index);
+    }
     register_app(database, transaction);
     auto *owner = transaction.get<AcDbBlockTableRecord>(space, AcDb::kForWrite);
-    std::set<int> ducts;
-    for (const auto &info : result.topology.ducts)
-        ducts.insert(info.component_id);
     for (const auto &[id, representation] : result.geometry) {
-        const auto outputLayer = ducts.contains(id) ? ductLayer : fittingLayer;
-        const auto append = [&](auto entity) {
+        const auto append = [&](auto entity, AcDbObjectId outputLayer, AcDbObjectId linetype) {
             entity->setDatabaseDefaults(&database);
             check(entity->setLayer(outputLayer), "Could not set generated entity layer");
+            check(entity->setLinetype(linetype), "Could not set generated entity linetype");
             AcDbObjectId entityId;
             auto *added = transaction.add(std::move(entity), entityId, *owner);
             created.push_back(entityId);
             tag(*added, network.id, id);
-            return entityId;
         };
-        if (request.representation == NetworkActions::GeometryRepresentation::Centerline) {
-            for (const auto &line : representation.layout_skeleton)
-                append(std::make_unique<AcDbLine>(
-                    AcGePoint3d{line.start.x / scale, line.start.y / scale, 0},
-                    AcGePoint3d{line.end.x / scale, line.end.y / scale, 0}));
-            continue;
-        }
         if (representation.primitives.size() == 1) {
             const auto &line = std::get<Line>(representation.primitives.front());
             append(std::make_unique<AcDbLine>(
                 AcGePoint3d{line.start.x / scale, line.start.y / scale, 0},
-                AcGePoint3d{line.end.x / scale, line.end.y / scale, 0}));
-            continue;
+                AcGePoint3d{line.end.x / scale, line.end.y / scale, 0}),
+                ductLayer, database.continuousLinetype());
+        } else {
+            append(boundary(representation, scale), ductLayer, database.continuousLinetype());
         }
-        const auto boundaryId = append(boundary(representation, scale));
-        if (request.representation != NetworkActions::GeometryRepresentation::Hatch)
-            continue;
-        auto hatch = std::make_unique<AcDbHatch>();
-        hatch->setDatabaseDefaults(&database);
-        check(hatch->setLayer(outputLayer), "Could not set geometry hatch layer");
-        check(hatch->setPatternScale(100 / scale), "Could not set geometry hatch scale");
-        check(hatch->setPattern(AcDbHatch::kPreDefined, L"ANSI31"),
-              "Could not set geometry hatch pattern");
-        check(hatch->setAssociative(true), "Could not associate geometry hatch");
-        AcDbObjectId hatchId;
-        auto *added = transaction.add(std::move(hatch), hatchId, *owner);
-        created.push_back(hatchId);
-        AcDbObjectIdArray loop;
-        loop.append(boundaryId);
-        check(added->appendLoop(AcDbHatch::kExternal, loop),
-              "Could not set geometry hatch boundary");
-        check(added->evaluateHatch(true), "Could not evaluate geometry hatch");
-        tag(*added, network.id, id);
+        if (withCenterlines) {
+            for (const auto &line : representation.layout_skeleton)
+                append(std::make_unique<AcDbLine>(
+                    AcGePoint3d{line.start.x / scale, line.start.y / scale, 0},
+                    AcGePoint3d{line.end.x / scale, line.end.y / scale, 0}),
+                    centerlineLayer, centerLinetype);
+        }
     }
     erase(transaction, previous);
     transaction.commit();

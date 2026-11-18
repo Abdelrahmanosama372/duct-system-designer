@@ -14,6 +14,11 @@ namespace {
 int labelRefreshRequests=0;
 int propertyFinishRequests=0;
 std::optional<NetworkActions::GeometryRequest> geometryRequest;
+std::vector<std::wstring> DrawingLayerFixture() {
+    std::vector<std::wstring> layers{L"0",L"M-HVAC-DUCT",L"M-HVAC-CENTERLINE",L"Supply Main"};
+    for(int i=0;i<200;++i)layers.push_back(L"Test layer "+std::to_wstring(i));
+    return layers;
+}
 bool CaptureGeometry(const NetworkActions::GeometryRequest& request,HWND) {
     geometryRequest=request;
     return true;
@@ -419,6 +424,7 @@ public:
             {
                 DrawingGenerationContent content;
                 NetworkActions::SetGeometryHandler(CaptureGeometry);
+                NetworkActions::SetLayerProvider(DrawingLayerFixture);
                 if(!content.CreateView(&frame,107))++errors;
                 else
                 {
@@ -440,8 +446,21 @@ public:
                     generate->SendMessage(BM_SETSTATE,FALSE);generate->SendMessage(WM_MOUSELEAVE);generate->EnableWindow(FALSE);Pump();Capture(content,L"modern-actions-disabled.png");
                     generate->EnableWindow(TRUE);generate->SetFocus();Pump();Capture(content,L"modern-actions-focused.png");
                     geometry->SendMessage(WM_VSCROLL,SB_TOP);Pump();
-                    geometry->GetDlgItemText(DG_REP,value);if(value!=L"Rectangular Hatch")++errors;
+                    geometry->GetDlgItemText(DG_REP,value);if(value!=L"Duct lines")++errors;
+                    auto* representation=static_cast<CComboBox*>(geometry->GetDlgItem(DG_REP));
+                    if(representation->GetCount()!=2)++errors;
+                    if(geometry->GetDlgItem(DG_CENTERLINE_LAYER)->GetStyle()&WS_VISIBLE)++errors;
+                    if(geometry->GetDlgItem(DG_CENTERLINE_LAYER_LABEL)->GetStyle()&WS_VISIBLE)++errors;
                     geometry->GetDlgItemText(DG_REDUCER,value);if(value!=L"300")++errors;
+                    auto* layerSearch=static_cast<SearchableComboBox*>(geometry->GetDlgItem(DG_DUCT_LAYER));
+                    if(layerSearch->GetCount()!=204 || layerSearch->GetMinVisibleItems()!=6)++errors;
+                    layerSearch->SetWindowText(L"sUpPlY");
+                    geometry->SendMessage(WM_COMMAND,MAKEWPARAM(DG_DUCT_LAYER,CBN_EDITCHANGE),reinterpret_cast<LPARAM>(layerSearch->m_hWnd));
+                    if(layerSearch->GetCount()!=1)++errors;
+                    CString match;layerSearch->GetLBText(0,match);if(match!=L"Supply Main")++errors;
+                    std::wstring selectedLayer;if(layerSearch->SelectedValue(selectedLayer))++errors;
+                    layerSearch->ShowDropDown(FALSE);
+                    layerSearch->SetWindowText(L"M-HVAC-DUCT");
                     auto* networks=static_cast<CComboBox*>(geometry->GetDlgItem(DG_NETWORK));
                     if(networks->GetCount()!=4)++errors;
                     if(networks->GetItemHeight(-1)<28 || networks->GetItemHeight(0)<30)++errors;
@@ -451,7 +470,21 @@ public:
                     geometry->GetDlgItemText(DG_STATUS,value);if(value.Find(L"positive value")<0)++errors;
                     geometry->SetDlgItemText(DG_REDUCER,L"350");geometry->SendDlgItemMessage(DG_GENERATE,BM_CLICK);Pump();
                     if(!geometryRequest || geometryRequest->remove || geometryRequest->reducer_length_mm!=350 ||
-                        geometryRequest->elbow_inside_radius_ratio!=1.5 || geometryRequest->network_id!="NET-002")++errors;
+                        geometryRequest->elbow_inside_radius_ratio!=1.5 || geometryRequest->network_id!="NET-002" ||
+                        geometryRequest->representation!=NetworkActions::GeometryRepresentation::Outline)++errors;
+                    const auto chooseRepresentation=[&](int index) {
+                        representation->SetCurSel(index);
+                        geometry->SendMessage(WM_COMMAND,MAKEWPARAM(DG_REP,CBN_SELCHANGE),
+                            reinterpret_cast<LPARAM>(representation->m_hWnd));Pump();
+                    };
+                    chooseRepresentation(1);
+                    if(!(geometry->GetDlgItem(DG_CENTERLINE_LAYER)->GetStyle()&WS_VISIBLE) ||
+                        !(geometry->GetDlgItem(DG_CENTERLINE_LAYER_LABEL)->GetStyle()&WS_VISIBLE))++errors;
+                    geometry->SendDlgItemMessage(DG_GENERATE,BM_CLICK);Pump();
+                    if(!geometryRequest || geometryRequest->representation!=NetworkActions::GeometryRepresentation::OutlineWithCenterlines ||
+                        geometryRequest->centerline_layer!=L"M-HVAC-CENTERLINE" || geometryRequest->duct_layer!=L"M-HVAC-DUCT")++errors;
+                    chooseRepresentation(0);
+                    if(geometry->GetDlgItem(DG_CENTERLINE_LAYER)->GetStyle()&WS_VISIBLE)++errors;
                     geometry->GetDlgItemText(DG_ELBOW,value);if(value!=L"1.5")++errors;
                     geometry->SendMessage(WM_VSCROLL,SB_TOP);Pump();Capture(content,L"drawing-geometry-top.png");
                     geometry->SendMessage(WM_VSCROLL,SB_BOTTOM);Pump();Capture(content,L"drawing-geometry-bottom.png");
@@ -477,6 +510,7 @@ public:
                     content.DestroyWindow();
                 }
                 NetworkActions::SetGeometryHandler(nullptr);
+                NetworkActions::SetLayerProvider(nullptr);
                 fwprintf(log,L"Drawing Generation: tabs, network synchronization, defaults, validation, geometry requests, retained edits and resize/scroll cycles. Errors: %d\n",errors);
             }
 

@@ -4,8 +4,13 @@
 namespace {
 NetworkActions::Handler handler = nullptr;
 NetworkActions::GeometryHandler geometryHandler = nullptr;
+NetworkActions::LayerProvider layerProvider = nullptr;
 }
 void NetworkActions::SetHandler(Handler value) { handler = value; }
+void NetworkActions::SetLayerProvider(LayerProvider value) { layerProvider = value; }
+std::vector<std::wstring> NetworkActions::DrawingLayers() {
+    return layerProvider ? layerProvider() : std::vector<std::wstring>{};
+}
 void NetworkActions::SetGeometryHandler(GeometryHandler value) { geometryHandler = value; }
 bool NetworkActions::RequestGeometry(const GeometryRequest& request, HWND window) {
     if (geometryHandler) return geometryHandler(request, window);
