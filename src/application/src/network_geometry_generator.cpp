@@ -79,7 +79,7 @@ NetworkGeometryGenerator::generate(const DuctNetwork &network,
     map_equipment(result.topology.dampers);
     geometry::PlacementContextManager placement{
         system.dftree(), geometry::SourceGeometryRepository{std::move(sources)}};
-    geometry::RectangularGeometricRepresentationBuilder builder{fittings};
+    geometry::RectangularGeometricRepresentationBuilder builder{fittings, system.config().system_type};
     ductsystem::GeometryConstructorVisitor visitor{placement, builder};
     visitor.construct();
     result.geometry = visitor.representations();

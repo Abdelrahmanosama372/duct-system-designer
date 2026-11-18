@@ -27,7 +27,14 @@ Line skeleton(Point start, Point end) { return {start, end, LineType::CenterLine
 } // namespace
 
 RectangularGeometricRepresentationBuilder::RectangularGeometricRepresentationBuilder(
-    const ductsystem::FittingSizingConfig& config) : config_(config) {}
+    const ductsystem::FittingSizingConfig& config, ductsystem::SystemType system_type)
+    : config_(config), system_type_(system_type) {
+    if (system_type_ != ductsystem::SystemType::Supply &&
+        system_type_ != ductsystem::SystemType::Return &&
+        system_type_ != ductsystem::SystemType::Exhaust) {
+        throw std::invalid_argument("Invalid geometry system type");
+    }
+}
 
 GeometricRepresentation RectangularGeometricRepresentationBuilder::place(
     int id, std::vector<double> key, const PlacementContext& context,
@@ -105,9 +112,14 @@ GeometricRepresentation RectangularGeometricRepresentationBuilder::build_shoetak
     if (c.side != ductsystem::TakeoffSide::Left && c.side != ductsystem::TakeoffSide::Right) {
         throw GeometryConstructionError("Shoe side must be left or right");
     }
-    return place(c.id, {3, width, height, length, static_cast<double>(c.side)}, context, [&] {
-        const double low = -width / 2 - (c.side == ductsystem::TakeoffSide::Left ? length : 0);
-        const double high = width / 2 + (c.side == ductsystem::TakeoffSide::Right ? length : 0);
+    return place(c.id, {3, width, height, length, static_cast<double>(c.side),
+                       static_cast<double>(system_type_)}, context, [&] {
+        // Local X follows the branch. Left/right selects the main-axis direction
+        // in this frame; supply widens upstream, return/exhaust downstream.
+        const bool widen_low_side = (c.side == ductsystem::TakeoffSide::Left) !=
+                                   (system_type_ == ductsystem::SystemType::Supply);
+        const double low = -width / 2 - (widen_low_side ? length : 0);
+        const double high = width / 2 + (widen_low_side ? 0 : length);
         return GeometricRepresentation{c.id,
             polygon({{0, low}, {length, -width / 2}, {length, width / 2}, {0, high}}),
             {skeleton({0, 0}, {length, 0})}};

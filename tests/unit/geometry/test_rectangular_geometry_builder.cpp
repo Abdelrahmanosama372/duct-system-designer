@@ -8,7 +8,7 @@ using namespace ductsystem;
 
 class GeometryBuilderTest : public ::testing::Test {
 protected:
-    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}};
+    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}, SystemType::Supply};
     PlacementContext identity{};
 };
 
@@ -46,17 +46,17 @@ TEST_P(ElbowGeometryTest, SignedTurnsHaveTwoArcsAndTwoIntersectingSkeletonLegs) 
 }
 INSTANTIATE_TEST_SUITE_P(BothDirections, ElbowGeometryTest, ::testing::Values(1.0, -1.0));
 
-TEST_F(GeometryBuilderTest, ShoeBevelWidensTheCorrectSideOfTheMainOpening) {
+TEST_F(GeometryBuilderTest, SupplyShoeBevelWidensTheUpstreamSideOfTheMainOpening) {
     const RectangularShoeTakeoff left{0, 100, pressure, material, TakeoffSide::Left,
                                      200, 100, std::nullopt, 150};
     const RectangularShoeTakeoff right{1, 100, pressure, material, TakeoffSide::Right,
                                       200, 100, std::nullopt, 150};
     const auto a = builder.build_shoetakeoff(left, identity);
     const auto b = builder.build_shoetakeoff(right, identity);
-    expect_line(std::get<Line>(a.primitives[0]), {0, -250}, {150, -100});
-    expect_point(std::get<Line>(a.primitives[2]).end, {0, 100});
-    expect_line(std::get<Line>(b.primitives[0]), {0, -100}, {150, -100});
-    expect_point(std::get<Line>(b.primitives[2]).end, {0, 250});
+    expect_line(std::get<Line>(a.primitives[0]), {0, -100}, {150, -100});
+    expect_point(std::get<Line>(a.primitives[2]).end, {0, 250});
+    expect_line(std::get<Line>(b.primitives[0]), {0, -250}, {150, -100});
+    expect_point(std::get<Line>(b.primitives[2]).end, {0, 100});
     EXPECT_EQ(a.layout_skeleton[0].length(), 150);
 }
 
@@ -123,6 +123,11 @@ TEST_F(GeometryBuilderTest, RejectsMutatedInvalidShoeSideAndUnsupportedView) {
     const RectangularEndcap cap{1, 0, pressure, material, 400, 200};
     identity.view_type = static_cast<ViewType>(99);
     EXPECT_THROW((void)builder.build_endcap(cap, identity), GeometryConstructionError);
+}
+
+TEST_F(GeometryBuilderTest, RejectsUnsupportedSystemType) {
+    EXPECT_THROW((RectangularGeometricRepresentationBuilder{{150, 300, 1.5},
+        static_cast<SystemType>(99)}), std::invalid_argument);
 }
 
 } // namespace

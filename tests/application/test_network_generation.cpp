@@ -8,6 +8,8 @@
 #include "network_test_helpers.hpp"
 #include "sizing/equal_velocity.hpp"
 #include <numbers>
+#include <cmath>
+#include <tuple>
 
 namespace dsd::application::test {
 namespace {
@@ -271,5 +273,65 @@ TEST_F(NetworkGenerationTest, GeneratesFromActualDiscoveryAndEquipmentSegmentati
     EXPECT_EQ(result.topology.air_terminals.size(), 1);
     EXPECT_EQ(result.topology.dampers.size(), 1);
 }
+class TakeoffSystemGeometryTest : public NetworkGenerationTest,
+    public ::testing::WithParamInterface<std::tuple<NetworkSystemType, double>> {};
+
+TEST_P(TakeoffSystemGeometryTest, PlacesBothBranchBevelsOnTheSpecifiedMainDuctSide) {
+    const auto [type, rotation] = GetParam();
+    const geometry::Transform2D transform{{10000, 20000}, rotation};
+    const auto source = [&](const char* id, geometry::Point start, geometry::Point end) {
+        return path(id, {transform.apply(start), transform.apply(end)});
+    };
+    auto value = network({source("root", {-3000, 0}, {0, 0}),
+                          source("straight", {0, 0}, {3000, 0}),
+                          source("left", {0, 0}, {0, 3000}),
+                          source("right", {0, 0}, {0, -3000})});
+    value.system_type = type;
+    const auto result = generate(value);
+    const auto shoes = components<RectangularShoeTakeoff>(result);
+    ASSERT_EQ(shoes.size(), 2);
+    const double bevel_side = type == NetworkSystemType::Supply ? -1 : 1;
+    const double mx = std::cos(rotation), my = std::sin(rotation);
+    for (const auto* shoe : shoes) {
+        const double side = shoe->side == TakeoffSide::Left ? 1 : -1;
+        const double bx = -side * my, by = side * mx;
+        const auto main_distance = [&](const geometry::Point& p) {
+            return (p.x - 10000) * mx + (p.y - 20000) * my;
+        };
+        const auto branch_distance = [&](const geometry::Point& p) {
+            return (p.x - 10000) * bx + (p.y - 20000) * by;
+        };
+        int bevels = 0;
+        const auto& outline = result.geometry.at(shoe->id);
+        for (const auto& primitive : outline.primitives) {
+            const auto& edge = std::get<geometry::Line>(primitive);
+            const double dm = main_distance(edge.end) - main_distance(edge.start);
+            const double db = branch_distance(edge.end) - branch_distance(edge.start);
+            if (std::abs(dm) < 1e-6 || std::abs(db) < 1e-6) continue;
+            ++bevels;
+            EXPECT_NEAR(std::abs(dm), 150, 1e-6);
+            EXPECT_NEAR(std::abs(db), 150, 1e-6);
+            const bool starts_at_main = branch_distance(edge.start) < branch_distance(edge.end);
+            const auto& inlet = starts_at_main ? edge.start : edge.end;
+            const auto& outlet = starts_at_main ? edge.end : edge.start;
+            EXPECT_NEAR(main_distance(inlet), bevel_side * 350, 1e-6);
+            EXPECT_NEAR(main_distance(outlet), bevel_side * 200, 1e-6);
+            EXPECT_NEAR(branch_distance(inlet), 200, 1e-6);
+            EXPECT_NEAR(branch_distance(outlet), 350, 1e-6);
+        }
+        EXPECT_EQ(bevels, 1);
+        const auto& centerline = outline.layout_skeleton.front();
+        EXPECT_NEAR(main_distance(centerline.start), 0, 1e-6);
+        EXPECT_NEAR(main_distance(centerline.end), 0, 1e-6);
+        EXPECT_NEAR(branch_distance(centerline.start), 200, 1e-6);
+        EXPECT_NEAR(branch_distance(centerline.end), 350, 1e-6);
+    }
+}
+INSTANTIATE_TEST_SUITE_P(SystemTypesAndRotations, TakeoffSystemGeometryTest,
+    ::testing::Combine(::testing::Values(NetworkSystemType::Supply, NetworkSystemType::Return,
+                                         NetworkSystemType::Exhaust),
+                       ::testing::Values(0., std::numbers::pi / 2, std::numbers::pi,
+                                         -std::numbers::pi / 2)));
+
 } // namespace
 } // namespace dsd::application::test

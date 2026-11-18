@@ -21,7 +21,8 @@ public:
 
 class RectangularGeometricRepresentationBuilder {
 public:
-    explicit RectangularGeometricRepresentationBuilder(const ductsystem::FittingSizingConfig& config);
+    RectangularGeometricRepresentationBuilder(const ductsystem::FittingSizingConfig& config,
+                                              ductsystem::SystemType system_type);
     [[nodiscard]] GeometricRepresentation build_duct(
         const ductsystem::RectangularDuct& component, const PlacementContext& context);
     [[nodiscard]] GeometricRepresentation build_elbow(
@@ -38,6 +39,7 @@ public:
 
 private:
     const ductsystem::FittingSizingConfig config_;
+    const ductsystem::SystemType system_type_;
     std::map<int, std::shared_ptr<const GeometricRepresentation>> normalized_;
     std::map<int, std::vector<double>> keys_;
 

@@ -50,7 +50,7 @@ TEST_P(GeometryPipelineTest, FitsAllDuctsToPlacedFittingSkeletonsAndUpdatesFinal
     const Transform2D transform{{100, 200}, GetParam()};
     const SourceGeometryRepository repo{main_sources(transform)};
     PlacementContextManager placement{tree, repo};
-    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}};
+    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}, SystemType::Supply};
     GeometryConstructorVisitor visitor{placement, builder};
 
     visitor.construct();
@@ -113,7 +113,7 @@ TEST(GeometryPipelineTest, ExtendsTerminalMainAndPlacesEndcapAndBothShoeDirectio
         {0, Line{{0, 0}, {3000, 0}, LineType::Normal, 0}},
         {1, Line{{3000, 0}, {3000, 3000}, LineType::Normal, 1}},
         {2, Line{{3000, 0}, {3000, -3000}, LineType::Normal, 2}}}}};
-    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}};
+    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}, SystemType::Supply};
     GeometryConstructorVisitor visitor{placement, builder};
     visitor.construct();
     const auto& result = visitor.representations();
@@ -130,7 +130,7 @@ TEST(GeometryPipelineTest, ValidatesAllConnectionsBeforeChangingAnyDuctLengths) 
     auto sources = main_sources();
     sources.at(2).end = {3000, 100}; // This later branch cannot accommodate its elbow.
     PlacementContextManager placement{tree, SourceGeometryRepository{sources}};
-    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}};
+    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}, SystemType::Supply};
     GeometryConstructorVisitor visitor{placement, builder};
 
     EXPECT_THROW(visitor.construct(), PlacementError);
@@ -142,7 +142,7 @@ TEST(GeometryPipelineTest, ValidatesAllConnectionsBeforeChangingAnyDuctLengths) 
 TEST(GeometryPipelineTest, DirectDuctVisitRequiresItsFittingsToBePlacedFirst) {
     auto tree = main_network();
     PlacementContextManager placement{tree, SourceGeometryRepository{main_sources()}};
-    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}};
+    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}, SystemType::Supply};
     GeometryConstructorVisitor visitor{placement, builder};
     EXPECT_THROW(tree.root().component().accept(visitor), PlacementError);
 }
@@ -152,7 +152,7 @@ TEST(GeometryPipelineTest, DirectVisitOfStandaloneDuctPublishesGeometryAndFinalL
     DuctFittingTree tree{root};
     PlacementContextManager placement{tree, SourceGeometryRepository{{
         {0, Line{{10, 20}, {10, 1020}, LineType::Normal, 0}}}}};
-    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}};
+    RectangularGeometricRepresentationBuilder builder{{150, 300, 1.5}, SystemType::Supply};
     GeometryConstructorVisitor visitor{placement, builder};
     root->component().accept(visitor);
     EXPECT_EQ(dynamic_cast<RectangularDuct&>(root->component()).length, 1000);
