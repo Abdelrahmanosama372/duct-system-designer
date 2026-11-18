@@ -5,6 +5,20 @@ class UiComboBox : public CComboBox
 {
     bool m_hover=false;
     CBrush m_input{UiStyle::Colors(m_hWnd).input};
+    void CenterEdit()
+    {
+        if((GetStyle()&0x0003)!=CBS_DROPDOWN)return;
+        COMBOBOXINFO info={sizeof(info)};
+        if(!GetComboBoxInfo(&info) || !info.hwndItem)return;
+        CRect rect;GetClientRect(&rect);
+        CClientDC dc(this);auto old=dc.SelectObject(GetFont());
+        TEXTMETRIC metrics={};dc.GetTextMetrics(&metrics);dc.SelectObject(old);
+        const int height=min(static_cast<int>(metrics.tmHeight),max(1,rect.Height()-UiStyle::Px(m_hWnd,8)));
+        const int left=UiStyle::Px(m_hWnd,12),arrowWidth=UiStyle::Px(m_hWnd,26);
+        ::SendMessage(info.hwndItem,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,0);
+        ::SetWindowPos(info.hwndItem,nullptr,left,(rect.Height()-height)/2,
+            max(1,rect.Width()-left-arrowWidth),height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
+    }
     void Paint(CDC& dc)
     {
         CRect rect;GetClientRect(&rect);
@@ -26,12 +40,18 @@ class UiComboBox : public CComboBox
     }
 protected:
     afx_msg void OnPaint() {CPaintDC dc(this);Paint(dc);}
+    afx_msg void OnSize(UINT type,int cx,int cy){CComboBox::OnSize(type,cx,cy);CenterEdit();}
     afx_msg LRESULT OnPrintClient(WPARAM wp,LPARAM)
     {Paint(*CDC::FromHandle(reinterpret_cast<HDC>(wp)));return 0;}
     afx_msg BOOL OnEraseBkgnd(CDC*) {return TRUE;}
     afx_msg HBRUSH OnCtlColor(CDC* dc,CWnd*,UINT)
-    {dc->SetBkColor(UiStyle::Colors(m_hWnd).input);dc->SetTextColor(IsWindowEnabled()?UiStyle::Colors(m_hWnd).bright:UiStyle::Colors(m_hWnd).disabled);return m_input;}
-    afx_msg void OnSetFocus(CWnd* old) {CComboBox::OnSetFocus(old);Invalidate(FALSE);}
+    {
+        const auto input=UiStyle::Colors(m_hWnd).input;
+        LOGBRUSH brush={};m_input.GetLogBrush(&brush);
+        if(brush.lbColor!=input){m_input.DeleteObject();m_input.CreateSolidBrush(input);}
+        dc->SetBkColor(input);dc->SetTextColor(IsWindowEnabled()?UiStyle::Colors(m_hWnd).bright:UiStyle::Colors(m_hWnd).disabled);return m_input;
+    }
+    afx_msg void OnSetFocus(CWnd* old) {CComboBox::OnSetFocus(old);CenterEdit();Invalidate(FALSE);}
     afx_msg void OnKillFocus(CWnd* next) {CComboBox::OnKillFocus(next);Invalidate(FALSE);}
     afx_msg void OnMouseMove(UINT flags,CPoint point)
     {
@@ -48,6 +68,7 @@ public:
         COMBOBOXINFO info={sizeof(info)};
         if(GetComboBoxInfo(&info) && info.hwndItem)
             ::SendMessage(info.hwndItem,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(UiStyle::Px(m_hWnd,10),UiStyle::Px(m_hWnd,10)));
+        CenterEdit();
     }
     void DrawItem(LPDRAWITEMSTRUCT item) override
     {
