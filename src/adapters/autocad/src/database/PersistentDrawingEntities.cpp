@@ -176,8 +176,9 @@ void tag(AcDbDatabase &db, AcDbEntity &entity, const EntityDefinition &d) {
         auto *p = acutNewRb(code);
         if (!p)
             throw std::bad_alloc{};
-        p->resval.rstring = acutNewString(value.c_str());
-        if (!p->resval.rstring) {
+        p->resval.rstring = nullptr;
+        const auto status = acutNewString(value.c_str(), p->resval.rstring);
+        if (status != Acad::eOk || !p->resval.rstring) {
             acutRelRb(p);
             throw std::bad_alloc{};
         }

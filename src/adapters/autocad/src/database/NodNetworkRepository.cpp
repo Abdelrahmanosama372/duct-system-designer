@@ -80,8 +80,9 @@ void write_record(AcDbDatabase &db, AcDbObjectId parent, const wchar_t *name,
         auto *item = acutNewRb(1);
         if (!item)
             throw std::bad_alloc{};
-        item->resval.rstring = acutNewString(chunk.c_str());
-        if (!item->resval.rstring) {
+        item->resval.rstring = nullptr;
+        const auto status = acutNewString(chunk.c_str(), item->resval.rstring);
+        if (status != Acad::eOk || !item->resval.rstring) {
             acutRelRb(item);
             throw std::bad_alloc{};
         }
