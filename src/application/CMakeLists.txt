@@ -11,6 +11,8 @@ function(dsd_add_application_sources target)
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/duct_system_builder.cpp"
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/network_geometry_generator.cpp"
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/duct_annotations.cpp"
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/network_record_codec.cpp"
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/network_recovery.cpp"
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/network_discovery.cpp"
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/network_segmentor.cpp"
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/network_equipment.cpp"

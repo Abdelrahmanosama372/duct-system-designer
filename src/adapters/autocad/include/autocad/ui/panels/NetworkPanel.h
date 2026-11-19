@@ -292,8 +292,9 @@ public:
         LoadForm(NetworkSession::Current().form);m_name->SetFocus();
     }
     afx_msg void OnDestroy() { NetworkSession::Detach(m_hWnd);ScrollPage::OnDestroy(); }
-    afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM)
+    afx_msg LRESULT OnNetworkUpdated(WPARAM changed,LPARAM)
     {
+        if(changed)LoadForm(NetworkSession::Current().form);
         UpdateSelectionState();Status(NetworkSession::Current().message);return 0;
     }
     DECLARE_MESSAGE_MAP()
@@ -408,8 +409,9 @@ protected:
         NetworkSession::Detach(m_hWnd);
         ScrollPage::OnDestroy();
     }
-    afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM)
+    afx_msg LRESULT OnNetworkUpdated(WPARAM changed,LPARAM)
     {
+        if(changed){Rebuild();return 0;}
         for(auto& card:m_cards)
         {
             if(card->index>=NetworkSession::Drafts().size())continue;

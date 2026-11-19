@@ -2,6 +2,7 @@
 #include "autocad/ui/layout/TabbedContent.h"
 #include "autocad/ui/model/NetworkSession.h"
 #include "autocad/ui/model/NetworkActions.h"
+#include "autocad/ui/model/ApplicationSession.h"
 #include "autocad/ui/controls/SearchableComboBox.h"
 #include <array>
 #include <cmath>
@@ -21,6 +22,39 @@ enum DrawingControl : UINT
 class DrawingGenerationPage : public ScrollPage
 {
     bool m_annotations;
+    const void* m_settingsSession=nullptr;
+    std::string m_settingsNetwork;
+    void LoadSavedSettings() {
+        auto* combo=static_cast<CComboBox*>(GetDlgItem(DG_NETWORK));const int row=combo->GetCurSel();
+        if(row<0)return;
+        const auto id=dsd::application::network_item_id("NET",static_cast<int>(combo->GetItemData(row)));
+        const void* session=&DuctUi::Session();
+        if(session==m_settingsSession && id==m_settingsNetwork)return;
+        m_settingsSession=session;m_settingsNetwork=id;
+        const auto& records=DuctUi::Application().registered_networks();const auto saved=records.find(id);
+        if(saved==records.end())return;
+        const auto numeric=[&](UINT control,double value){CString text;text.Format(L"%.12g",value);SetDlgItemText(control,text);};
+        if(m_annotations && saved->second.annotation_settings) {
+            const auto& settings=*saved->second.annotation_settings;
+            CheckDlgButton(DG_FLOW,settings.flow?BST_CHECKED:BST_UNCHECKED);
+            CheckDlgButton(DG_DIM,settings.dimensions?BST_CHECKED:BST_UNCHECKED);
+            CheckDlgButton(DG_BOD,settings.bod?BST_CHECKED:BST_UNCHECKED);
+            numeric(DG_TEXT_HEIGHT,settings.text_height_mm);numeric(DG_OFFSET,settings.offset_mm);
+            static_cast<CComboBox*>(GetDlgItem(DG_PLACEMENT))->SetCurSel(static_cast<int>(settings.placement));
+            DrawingChoice(DG_TEXT_LAYER).SetWindowText(settings.layer.c_str());
+            DrawingChoice(DG_TEXT_STYLE).SetWindowText(settings.text_style.c_str());
+        } else if(!m_annotations && saved->second.geometry_settings) {
+            const auto& settings=*saved->second.geometry_settings;
+            numeric(DG_REDUCER,settings.reducer_length_mm);numeric(DG_TAKEOFF,settings.takeoff_length_mm);
+            auto* radius=static_cast<CComboBox*>(GetDlgItem(DG_ELBOW));
+            CString text;text.Format(L"%.12g",settings.elbow_inside_radius_ratio);
+            radius->SetCurSel(radius->FindStringExact(-1,text));
+            static_cast<CComboBox*>(GetDlgItem(DG_REP))->SetCurSel(settings.centerlines?1:0);
+            DrawingChoice(DG_DUCT_LAYER).SetWindowText(settings.duct_layer.c_str());
+            DrawingChoice(DG_CENTERLINE_LAYER).SetWindowText(settings.centerline_layer.c_str());
+            UpdateCenterlineControls();
+        }
+    }
     SearchableComboBox& DrawingChoice(UINT id) {
         return *static_cast<SearchableComboBox*>(GetDlgItem(id));
     }
@@ -160,7 +194,8 @@ protected:
         RefreshNetworks();m_contentHeight=m_annotations?1144:1002;m_layoutReady=true;Relayout();return 0;
     }
     afx_msg void OnDestroy(){NetworkSession::Detach(GetSafeHwnd());ScrollPage::OnDestroy();}
-    afx_msg LRESULT OnNetworkUpdated(WPARAM,LPARAM) {
+    afx_msg LRESULT OnNetworkUpdated(WPARAM changed,LPARAM) {
+        if(changed){m_settingsSession=nullptr;RefreshNetworks();}
         SetDlgItemText(DG_STATUS,NetworkSession::Current().message);
         return 0;
     }
@@ -183,7 +218,8 @@ protected:
         if(id==DG_NETWORK && code==CBN_SELCHANGE)
         {
             auto* combo=static_cast<CComboBox*>(GetDlgItem(DG_NETWORK));const int row=combo->GetCurSel();
-            if(row>=0)DrawingPreview::networkId=static_cast<int>(combo->GetItemData(row));return TRUE;
+            if(row>=0)DrawingPreview::networkId=static_cast<int>(combo->GetItemData(row));
+            LoadSavedSettings();return TRUE;
         }
         if(code==BN_CLICKED && (id==DG_GENERATE || id==DG_REMOVE))
         {
@@ -258,11 +294,16 @@ public:
         auto* combo=static_cast<CComboBox*>(GetDlgItem(DG_NETWORK));combo->ResetContent();int selected=-1;
         for(const auto& network:NetworkSession::Drafts())
         {
+            const auto id=dsd::application::network_item_id("NET",network.id);
+            const auto& records=DuctUi::Application().registered_networks();
+            const auto record=records.find(id);
+            if(record!=records.end() && !record->second.consistent())continue;
             int row=combo->AddString(network.name);if(row<0)continue;
             combo->SetItemData(row,network.id);if(network.id==DrawingPreview::networkId)selected=row;
         }
         if(selected<0 && combo->GetCount()>0){selected=0;DrawingPreview::networkId=static_cast<int>(combo->GetItemData(0));}
         combo->SetCurSel(selected);combo->EnableWindow(combo->GetCount()>0);
+        LoadSavedSettings();
     }
 };
 

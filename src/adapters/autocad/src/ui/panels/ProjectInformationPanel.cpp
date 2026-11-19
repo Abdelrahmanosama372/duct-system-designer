@@ -5,6 +5,8 @@
 
 BEGIN_MESSAGE_MAP(ProjectInformationPage,ScrollPage)
     ON_WM_CREATE()
+    ON_WM_DESTROY()
+    ON_MESSAGE(WM_DSD_NETWORK_UPDATED,OnNetworkUpdated)
     ON_WM_CTLCOLOR()
 END_MESSAGE_MAP()
 

@@ -28,7 +28,7 @@ NetworkDraftSession& Current();
 void UpdateForm(const NetworkDraft& form);
 void Attach(HWND window);
 void Detach(HWND window);
-void Notify();
+void Notify(bool drawing_changed = false);
 void InvalidateAnalysis();
 bool CanRegister();
 void AnalyzeCurrent();

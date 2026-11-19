@@ -40,6 +40,9 @@ class DsdApplication {
     void commit_network_annotations(AnnotationGenerationResult result);
     void clear_network_annotations(const std::string& id);
     void clear_networks() noexcept;
+    void restore_networks(std::vector<RegisteredNetwork> networks);
+    void set_geometry_output_settings(const std::string& id, GeometryOutputSettings settings);
+    void update_source_consistency(const std::string& id, std::vector<std::string> missing_handles);
 
   private:
     NetworkDiscovery network_discovery_;

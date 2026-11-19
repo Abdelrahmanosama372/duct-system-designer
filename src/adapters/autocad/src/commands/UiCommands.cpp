@@ -2,6 +2,7 @@
 #include "autocad/ui/Designer.h"
 #include "autocad/ui/platform/ObjectArx.h"
 #include "autocad/database/NetworkInteraction.h"
+#include "autocad/database/DrawingPersistence.h"
 
 namespace
 {
@@ -18,6 +19,8 @@ void HideNetworkPalette(){DuctUi::SelectProjectInformation();}
 void Autocad::Commands::RegisterUiCommands()
 {
         Autocad::Network::Initialize();
+        acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DSD_RECOVER_NETWORKS"),
+            _T("DSD_RECOVER_NETWORKS"),ACRX_CMD_MODAL | ACRX_CMD_REDRAW,Autocad::Persistence::RecoverCurrentDrawing);
         acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DSD_NETWORK_ACTION"),
             _T("DSD_NETWORK_ACTION"),ACRX_CMD_MODAL | ACRX_CMD_REDRAW,Autocad::Network::ExecutePendingAction);
         acedRegCmds->addCommand(_T("DUCT_SYSTEM"),_T("DUCT_VIS_INFO"),
@@ -65,10 +68,12 @@ void Autocad::Commands::RegisterUiCommands()
             _T("DUCT_SYSTEM"), _T("DRAWING_GENERATION_PANEL"), _T("DRAWING_GENERATION_PANEL"),
             ACRX_CMD_MODAL, ShowDrawingGenerationPalette);
 
+        Autocad::Persistence::Initialize();
 }
 
 void Autocad::Commands::UnregisterUiCommands()
 {
+    Autocad::Persistence::Shutdown();
     Autocad::Network::Shutdown();
     acedRegCmds->removeGroup(_T("DUCT_SYSTEM"));
 }

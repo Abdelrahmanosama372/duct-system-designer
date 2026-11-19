@@ -1,5 +1,8 @@
 #include "autocad/ui/platform/ObjectArx.h"
 #include "autocad/database/NetworkInteraction.h"
+#include "autocad/database/DrawingPersistence.h"
+#include "PersistenceDatabase.h"
+#include "autocad/database/PersistentDrawingEntities.h"
 #include "autocad/database/GeneratedGeometry.h"
 #include "autocad/database/VisualizationSelection.h"
 #include "acdocman.h"
@@ -595,9 +598,12 @@ void Autocad::Network::ExecutePendingAction() {
         if (operation.annotations) {
             const auto& options = *operation.annotations;
             auto& application = DuctUi::Application();
+            if(!options.remove)Autocad::Persistence::RequireConsistentSources(options.network_id);
             const auto& network = application.registered_network(options.network_id);
             if (network.document_key != key)
                 throw std::invalid_argument("Activate the network's source drawing and layout before generating annotations");
+            NetworkActions::CommitDrawingChange([&] {
+            Autocad::Persistence::ForgetOutputs(network.id,dsd::application::persistence::OutputGroup::Annotation);
             if (options.remove) {
                 Autocad::GeneratedGeometry::RemoveAnnotations(*database, network);
                 application.clear_network_annotations(network.id);
@@ -608,6 +614,7 @@ void Autocad::Network::ExecutePendingAction() {
                 application.commit_network_annotations(std::move(result));
                 session.message = L"Duct annotations generated.";
             }
+            });
             session.busy = false;
             NetworkSession::Notify();
             return;
@@ -622,10 +629,12 @@ void Autocad::Network::ExecutePendingAction() {
                 return network_item_id("NET", static_cast<std::size_t>(form.id)) == options.network_id;
             });
             if (record == records.end()) throw std::invalid_argument("Registered network not found");
+            NetworkActions::CommitDrawingChange([&] {
             set_rectangle_visibility(*database, network, options.visible);
             record->visualizationVisible = options.visible;
             if (session.network && session.network->id == network.id)
                 session.form.visualizationVisible = options.visible;
+            });
             session.busy = false;
             session.message = options.visible?L"Network visualization shown.":L"Network visualization hidden.";
             acedUpdateDisplay();
@@ -635,9 +644,13 @@ void Autocad::Network::ExecutePendingAction() {
         if (operation.geometry) {
             const auto& options = *operation.geometry;
             auto& application = DuctUi::Application();
+            if(!options.remove)Autocad::Persistence::RequireConsistentSources(options.network_id);
             const auto& network = application.registered_network(options.network_id);
             if (network.document_key != key)
                 throw std::invalid_argument("Activate the network's source drawing and layout before generating geometry");
+            NetworkActions::CommitDrawingChange([&] {
+            Autocad::Persistence::ForgetOutputs(network.id,dsd::application::persistence::OutputGroup::Geometry);
+            Autocad::Persistence::ForgetOutputs(network.id,dsd::application::persistence::OutputGroup::Annotation);
             if (options.remove) {
                 Autocad::GeneratedGeometry::Remove(*database, network);
                 application.clear_network_generation(network.id);
@@ -647,8 +660,13 @@ void Autocad::Network::ExecutePendingAction() {
                     {options.takeoff_length_mm, options.reducer_length_mm, options.elbow_inside_radius_ratio});
                 Autocad::GeneratedGeometry::Replace(*database, space, scale, network, result, options);
                 application.commit_network_generation(std::move(result));
+                application.set_geometry_output_settings(network.id,
+                    {options.representation==NetworkActions::GeometryRepresentation::OutlineWithCenterlines,
+                     options.duct_layer,options.centerline_layer,options.takeoff_length_mm,
+                     options.reducer_length_mm,options.elbow_inside_radius_ratio});
                 session.message = L"Duct system sized and geometry generated.";
             }
+            });
             session.busy = false;
             NetworkSession::Notify();
             return;
@@ -807,4 +825,72 @@ void Autocad::Network::IdentifyVisualization() {
     } catch (const std::exception& error) {
         acutPrintf(L"\n%hs", error.what());
     }
+}
+
+void Autocad::Network::RebindPersistentNetwork(
+    AcDbDatabase &database, dsd::application::persistence::NetworkRecord &record) {
+    using Autocad::Persistence::detail::resolve;
+    auto &network = record.registered.network;
+    const auto space = resolve(database, record.space_handle);
+    if (space.isNull()) {
+        network.document_key.clear();
+        record.registered.missing_source_handles.push_back("space:" + record.space_handle);
+        return;
+    }
+    network.document_key = document_key(database, space);
+    const double scale = millimetres_per_unit(database);
+    const auto restore_path = [&](SourcePath &source) {
+        const auto id = resolve(database, source.source_id);
+        if (id.isNull())
+            return;
+        auto entity = open<AcDbEntity>(id);
+        if (auto parsed = read_path(*entity, scale))
+            source = std::move(*parsed);
+    };
+    if (record.registered.consistent()) {
+        if (network.root)
+            restore_path(*network.root);
+        for (auto &path : network.lines)
+            restore_path(path);
+    }
+    const auto restore_blocks = [&](auto &blocks) {
+        for (auto &info : blocks) {
+            const auto id = resolve(database, info.raw_block.source_id);
+            if (id.isNull())
+                continue;
+            auto entity = open<AcDbEntity>(id);
+            const auto *block = AcDbBlockReference::cast(entity.get());
+            if (!block)
+                continue;
+            AcDbExtents bounds;
+            if (block->getGeomExtents(bounds) != Acad::eOk)
+                continue;
+            info.raw_block = {info.raw_block.source_id,
+                              original_name(*block),
+                              point(block->position(), scale),
+                              {point(bounds.minPoint(), scale), point(bounds.maxPoint(), scale)},
+                              block->rotation()};
+        }
+    };
+    if (record.registered.consistent()) {
+        restore_blocks(network.air_terminal_blocks_infos);
+        restore_blocks(network.damper_blocks_infos);
+    }
+    auto &visuals = displayed[network.document_key + ":" + network.id];
+    visuals.rectangles.clear();
+    visuals.texts.clear();
+    const Autocad::Persistence::PersistentDrawingEntities resolver;
+    for (const auto &entity : record.entities) {
+        if (entity.group != dsd::application::persistence::OutputGroup::Visualization ||
+            !resolver.OutputExists(database, space, entity))
+            continue;
+        const auto id = resolve(database, entity.handle);
+        if (id.isNull())
+            continue;
+        if (entity.kind == dsd::application::persistence::EntityKind::Text)
+            visuals.texts.push_back(id);
+        else
+            visuals.rectangles.push_back(id);
+    }
+    Autocad::GeneratedGeometry::AdoptPersistentEntities(database, record);
 }

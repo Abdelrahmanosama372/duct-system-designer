@@ -1,4 +1,6 @@
 #include "autocad/database/GeneratedGeometry.h"
+#include "PersistenceDatabase.h"
+#include "autocad/database/PersistentDrawingEntities.h"
 #include "autocad/database/AnnotationWriter.h"
 #include "autocad/ui/platform/ObjectArx.h"
 #include "dbcolor.h"
@@ -265,3 +267,24 @@ void ForgetDocument(const std::string &prefix) {
 }
 void Clear() { displayed.clear(); }
 } // namespace Autocad::GeneratedGeometry
+
+void Autocad::GeneratedGeometry::AdoptPersistentEntities(
+    AcDbDatabase &database, const dsd::application::persistence::NetworkRecord &record) {
+    auto &output = displayed[key(record.registered.network)];
+    output.geometry.clear();
+    output.annotations.clear();
+    using dsd::application::persistence::OutputGroup;
+    const auto space = Autocad::Persistence::detail::resolve(database, record.space_handle);
+    const Autocad::Persistence::PersistentDrawingEntities resolver;
+    for (const auto &entity : record.entities) {
+        if (space.isNull() || !resolver.OutputExists(database, space, entity))
+            continue;
+        const auto id = Autocad::Persistence::detail::resolve(database, entity.handle);
+        if (id.isNull())
+            continue;
+        if (entity.group == OutputGroup::Geometry)
+            output.geometry.push_back(id);
+        if (entity.group == OutputGroup::Annotation)
+            output.annotations.push_back(id);
+    }
+}

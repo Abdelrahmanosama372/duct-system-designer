@@ -14,6 +14,7 @@
 #include "autocad/commands/UiCommands.h"
 #include "autocad/ui/style/Theme.h"
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/ApplicationSession.h"
 #include "autocad/ui/panels/PanelFactory.h"
 
 #include "adui.h"
@@ -86,6 +87,7 @@ acrxEntryPoint(AcRx::AppMsgCode msg, void* appId)
         NetworkSession::Reset();
         DuctUi::Shutdown();
         ResetProjectInformationState();
+        DuctUi::ClearDrawingSessions();
         UiStyle::StopGraphics();
         Fonts::Unload();
 

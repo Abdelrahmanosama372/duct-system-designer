@@ -16,8 +16,10 @@ namespace ProjectInfo
     inline constexpr std::array<const wchar_t*,Count> Placeholders={L"Enter project name",L"e.g. PRJ-001",
         L"Enter building name",L"Enter project address",L"Enter client name",L"Enter organization name",
         L"Enter author name",L"e.g. Ground floor",L"Enter drawing number",L"e.g. A",L""};
-    extern std::array<CString,Count> draft,saved;
-    extern bool editing;
+    std::array<CString,Count>& Draft();
+    std::array<CString,Count>& Saved();
+    bool& Editing();
+    void ReloadFromApplication();
     dsd::application::DsdApplication& Application();
     void RegisterProjectInformation();
     void Reset();

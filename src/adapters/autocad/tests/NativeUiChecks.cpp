@@ -4,6 +4,7 @@
 #include <atlimage.h>
 #include <cstdio>
 #include "autocad/ui/panels/NetworkPanel.h"
+#include "autocad/ui/model/ApplicationSession.h"
 #include "autocad/ui/panels/PropertiesPanel.h"
 #include <stdexcept>
 #include "autocad/ui/panels/DrawingGenerationPanel.h"
@@ -11,6 +12,8 @@
 #include "autocad/ui/panels/ProjectInformationPanel.h"
 
 namespace {
+void* simulatedDrawing=nullptr;
+void* DrawingKeyFixture(){return simulatedDrawing;}
 int labelRefreshRequests=0;
 int propertyFinishRequests=0;
 std::optional<NetworkActions::GeometryRequest> geometryRequest;
@@ -679,7 +682,7 @@ public:
                 const auto checkEditMode=[&](ProjectInformationPage& page,bool editing)
                 {
                     CString caption;page.GetDlgItemText(PI_SAVE,caption);
-                    if(caption!=(editing?L"Save":L"Modify") || ProjectInfo::editing!=editing)++errors;
+                    if(caption!=(editing?L"Save":L"Modify") || ProjectInfo::Editing()!=editing)++errors;
                     for(size_t i=0;i<ProjectInfo::Count;++i)
                     {
                         const bool readOnly=(page.GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(i))->GetStyle()&ES_READONLY)!=0;
@@ -714,7 +717,7 @@ public:
                         information->author,information->level_name,information->drawing_number,
                         information->revision,information->additional_information};
                     for(size_t i=0;i<values.size();++i)
-                        if(values[i]!=ProjectInfo::draft[i].GetString())return false;
+                        if(values[i]!=ProjectInfo::Draft()[i].GetString())return false;
                     return true;
                 };
                 checkEditMode(projectInfo,true);
@@ -725,12 +728,12 @@ public:
                     CString text;text.Format(L"Example field %zu",i+1);
                     projectInfo.SendDlgItemMessage(PI_FIELD_FIRST+static_cast<UINT>(i),EM_SETSEL,0,-1);
                     projectInfo.SendDlgItemMessage(PI_FIELD_FIRST+static_cast<UINT>(i),EM_REPLACESEL,TRUE,reinterpret_cast<LPARAM>(text.GetString()));Pump();
-                    if(ProjectInfo::draft[i]!=text)++errors;
+                    if(ProjectInfo::Draft()[i]!=text)++errors;
                 }
                 const UINT notesId=PI_FIELD_FIRST+static_cast<UINT>(ProjectInfo::AdditionalInformation);
                 projectInfo.SendDlgItemMessage(notesId,EM_SETSEL,0,-1);
                 projectInfo.SendDlgItemMessage(notesId,EM_REPLACESEL,TRUE,reinterpret_cast<LPARAM>(L"Design notes\r\nReview pending."));Pump();
-                if(ProjectInfo::draft[ProjectInfo::AdditionalInformation]!=L"Design notes\r\nReview pending.")++errors;
+                if(ProjectInfo::Draft()[ProjectInfo::AdditionalInformation]!=L"Design notes\r\nReview pending.")++errors;
                 if(static_cast<CEdit*>(projectInfo.GetDlgItem(notesId))->GetLineCount()!=2)++errors;
                 if(!(projectInfo.GetDlgItem(notesId)->GetStyle()&ES_WANTRETURN))++errors;
                 projectInfo.GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(ProjectInfo::Revision))->SetFocus();
@@ -745,7 +748,7 @@ public:
                 }
                 projectInfo.GetDlgItemText(PI_NOTICE,value);if(value.Find(L"Unsaved changes")<0)++errors;
                 projectInfo.SendDlgItemMessage(PI_SAVE,BM_CLICK);Pump();
-                if(ProjectInfo::saved!=ProjectInfo::draft)++errors;
+                if(ProjectInfo::Saved()!=ProjectInfo::Draft())++errors;
                 checkEditMode(projectInfo,false);
                 Capture(projectInfo,L"project-information-saved-text.png");
                 if(!registrationMatchesDraft())++errors;
@@ -766,7 +769,7 @@ public:
                 CRect railBox;projectInfo.GetDlgItem(2900)->GetWindowRect(&railBox);
                 if(abs((save.left+save.right)-(client.Width()-railBox.Width()))>2 || save.top<0 || save.bottom>client.bottom)++errors;
                 projectInfo.ShowWindow(SW_HIDE);projectInfo.ShowWindow(SW_SHOW);Pump();
-                if(ProjectInfo::draft[ProjectInfo::ProjectName]!=L"Modified project")++errors;
+                if(ProjectInfo::Draft()[ProjectInfo::ProjectName]!=L"Modified project")++errors;
                 checkEditMode(projectInfo,false);
                 projectInfo.DestroyWindow();
                 {
@@ -782,7 +785,7 @@ public:
                         checkEditMode(restored,true);
                         for(size_t i=0;i<ProjectInfo::Count;++i){restored.SendDlgItemMessage(PI_FIELD_FIRST+static_cast<UINT>(i),EM_SETSEL,0,-1);restored.SendDlgItemMessage(PI_FIELD_FIRST+static_cast<UINT>(i),EM_REPLACESEL,TRUE,reinterpret_cast<LPARAM>(L""));}
                         restored.SendDlgItemMessage(PI_SAVE,BM_CLICK);Pump();
-                        if(ProjectInfo::saved!=ProjectInfo::draft)++errors;
+                        if(ProjectInfo::Saved()!=ProjectInfo::Draft())++errors;
                         checkEditMode(restored,false);
                         if(!registrationMatchesDraft())++errors;
                         if(ProjectInfo::Application().project_information()!=
@@ -794,7 +797,7 @@ public:
                 }
             }
             ProjectInfo::Reset();
-            if(!ProjectInfo::editing || ProjectInfo::Application().project_information())++errors;
+            if(!ProjectInfo::Editing() || ProjectInfo::Application().project_information())++errors;
             fwprintf(log,L"Project information: optional fields, application registration, Save/Modify read-only and text-color toggle, centered native text, multiline notes, keyboard focus scrolling, hide/show and recreation retention, session reset. Errors: %d\n",errors);
             fflush(log);registration.DestroyWindow();registered.DestroyWindow();frame.DestroyWindow();
         }
@@ -804,6 +807,24 @@ public:
             wcscmp(Fonts::Face(FW_MEDIUM),L"Segoe UI")!=0 ||
             wcscmp(Fonts::Face(FW_SEMIBOLD),L"Segoe UI")!=0)++errors;
         fwprintf(log,L"Private font load/unload and missing-font fallback: final errors %d\n",errors);
+        {
+            int firstDrawing=0,secondDrawing=0;
+            DuctUi::SetDrawingKeyProvider(DrawingKeyFixture);simulatedDrawing=&firstDrawing;
+            ProjectInfo::Draft()[ProjectInfo::ProjectName]=L"Drawing A";
+            ProjectInfo::RegisterProjectInformation();NetworkSession::NextId()=17;
+            NetworkDraft item;item.id=16;item.name=L"A network";NetworkSession::Drafts().push_back(item);
+            simulatedDrawing=&secondDrawing;
+            if(ProjectInfo::Application().project_information() || !NetworkSession::Drafts().empty() || NetworkSession::NextId()!=1)++errors;
+            ProjectInfo::Draft()[ProjectInfo::ProjectName]=L"Drawing B";ProjectInfo::RegisterProjectInformation();
+            NetworkSession::NextId()=33;
+            simulatedDrawing=&firstDrawing;
+            if(ProjectInfo::Saved()[ProjectInfo::ProjectName]!=L"Drawing A" || NetworkSession::NextId()!=17 || NetworkSession::Drafts().size()!=1)++errors;
+            simulatedDrawing=&secondDrawing;
+            DuctUi::ReleaseDrawingSession(&firstDrawing);
+            if(ProjectInfo::Saved()[ProjectInfo::ProjectName]!=L"Drawing B" || NetworkSession::NextId()!=33)++errors;
+            DuctUi::ReleaseDrawingSession(&secondDrawing);DuctUi::SetDrawingKeyProvider(nullptr);simulatedDrawing=nullptr;
+            fwprintf(log,L"Drawing sessions: isolated project data, registered UI records and network counters. Errors: %d\n",errors);
+        }
         Fonts::Unload();fclose(log);UiStyle::StopGraphics();exitCode_=errors?1:0;return FALSE;
     }
 } app;

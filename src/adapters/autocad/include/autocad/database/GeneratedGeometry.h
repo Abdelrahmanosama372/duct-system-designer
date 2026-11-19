@@ -2,6 +2,7 @@
 #include "application/registered_network.hpp"
 #include "autocad/ui/model/NetworkActions.h"
 #include "dbid.h"
+#include "application/network_persistence.hpp"
 class AcDbDatabase;
 class AcDbEntity;
 
@@ -18,4 +19,6 @@ void RemoveAnnotations(AcDbDatabase& database, const dsd::application::DuctNetwo
 bool IsGenerated(const AcDbEntity &entity);
 void ForgetDocument(const std::string &documentPrefix);
 void Clear();
+void AdoptPersistentEntities(AcDbDatabase& database,
+    const dsd::application::persistence::NetworkRecord& record);
 } // namespace Autocad::GeneratedGeometry

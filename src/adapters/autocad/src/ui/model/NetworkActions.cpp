@@ -3,6 +3,7 @@
 
 namespace {
 NetworkActions::Handler handler = nullptr;
+NetworkActions::DrawingChangeHandler drawingChangeHandler = nullptr;
 NetworkActions::GeometryHandler geometryHandler = nullptr;
 NetworkActions::LayerProvider layerProvider = nullptr, textStyleProvider = nullptr;
 NetworkActions::AnnotationHandler annotationHandler = nullptr;
@@ -48,4 +49,9 @@ bool NetworkActions::RequestVisibility(const VisibilityRequest& request, HWND wi
     if (visibilityHandler) return visibilityHandler(request, window);
     NetworkSession::Current().message = L"Visualization visibility requires AutoCAD.";
     return false;
+}
+
+void NetworkActions::SetDrawingChangeHandler(DrawingChangeHandler value) {drawingChangeHandler=value;}
+void NetworkActions::CommitDrawingChange(const std::function<void()>& change) {
+    if(drawingChangeHandler)drawingChangeHandler(change);else change();
 }

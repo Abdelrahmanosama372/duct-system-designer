@@ -1,4 +1,5 @@
 #include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/NetworkActions.h"
 #include "autocad/ui/model/ApplicationSession.h"
 #include <stdexcept>
 #include <cmath>
@@ -76,8 +77,10 @@ void NetworkSession::RegisterCurrent() {
     // Revalidate in the application before accepting the complete snapshot.
     auto network = *session.network;
     network.sizing = sizing_config(form);
-    DuctUi::Application().register_network(std::move(network));
-    Drafts().swap(records);
+    NetworkActions::CommitDrawingChange([&] {
+        DuctUi::Application().register_network(std::move(network));
+        Drafts().swap(records);
+    });
     ResetDraft();
     session.message = L"Network registered. Select a root to start another network.";
     Notify();

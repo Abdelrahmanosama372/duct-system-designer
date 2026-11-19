@@ -1,6 +1,8 @@
 #pragma once
 #include "autocad/ui/layout/TabbedContent.h"
 #include "autocad/ui/model/ProjectInformation.h"
+#include "autocad/ui/model/NetworkSession.h"
+#include "autocad/ui/model/NetworkActions.h"
 #include <exception>
 
 
@@ -19,13 +21,13 @@ class ProjectInformationPage : public ScrollPage
         for(size_t i=0;i<ProjectInfo::Count;++i)
         {
             auto* edit=static_cast<CEdit*>(GetDlgItem(PI_FIELD_FIRST+static_cast<UINT>(i)));
-            edit->SetReadOnly(ProjectInfo::editing?FALSE:TRUE);
+            edit->SetReadOnly(ProjectInfo::Editing()?FALSE:TRUE);
             edit->Invalidate(FALSE);
         }
-        SetDlgItemText(PI_SAVE,ProjectInfo::editing?L"Save":L"Modify");
-        if(!ProjectInfo::editing)
-            SetDlgItemText(PI_NOTICE,L"Project information saved for this session. Click Modify to edit.");
-        else if(ProjectInfo::draft!=ProjectInfo::saved)
+        SetDlgItemText(PI_SAVE,ProjectInfo::Editing()?L"Save":L"Modify");
+        if(!ProjectInfo::Editing())
+            SetDlgItemText(PI_NOTICE,L"Project information saved in this drawing. Click Modify to edit.");
+        else if(ProjectInfo::Draft()!=ProjectInfo::Saved())
             SetDlgItemText(PI_NOTICE,L"Unsaved changes. Click Save to register project information.");
         else
             SetDlgItemText(PI_NOTICE,L"Edit project information and click Save. All fields are optional.");
@@ -35,7 +37,7 @@ protected:
     {
         HBRUSH brush=ScrollPage::OnCtlColor(dc,window,kind);
         if(window && window->GetDlgCtrlID()>=PI_FIELD_FIRST && window->GetDlgCtrlID()<=PI_FIELD_LAST)
-            dc->SetTextColor(ProjectInfo::editing?UiStyle::Colors(m_hWnd).bright:UiStyle::Colors(m_hWnd).muted);
+            dc->SetTextColor(ProjectInfo::Editing()?UiStyle::Colors(m_hWnd).bright:UiStyle::Colors(m_hWnd).muted);
         return brush;
     }
     int ExtraSectionGap(int gap) const override{return 12-gap;}
@@ -90,7 +92,7 @@ protected:
             const DWORD style=notes?(ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN):ES_AUTOHSCROLL;
             CEdit& edit=Control<CEdit>(L"",style,PI_FIELD_FIRST+static_cast<UINT>(i));
             edit.SetLimitText(notes?4000:(i==ProjectInfo::ProjectAddress?512:200));
-            edit.SetWindowText(ProjectInfo::draft[i]);
+            edit.SetWindowText(ProjectInfo::Draft()[i]);
             if(!notes)static_cast<UiEdit*>(&edit)->SetPlaceholder(ProjectInfo::Placeholders[i]);
         }
         Control<CButton>(L"Save",BS_PUSHBUTTON,PI_SAVE);
@@ -99,29 +101,38 @@ protected:
         GetDlgItem(PI_NOTICE)->SetFont(&m_caption);
         UiStyle::TextColor(*GetDlgItem(PI_NOTICE),UiStyle::ProjectReferenceStyle.muted);
         ApplyEditingState();
+        NetworkSession::Attach(GetSafeHwnd());
         m_loading=false;m_contentHeight=1412;m_layoutReady=true;Relayout();return 0;
+    }
+    afx_msg void OnDestroy(){NetworkSession::Detach(GetSafeHwnd());ScrollPage::OnDestroy();}
+    afx_msg LRESULT OnNetworkUpdated(WPARAM changed,LPARAM) {
+        if(!changed)return 0;
+        m_loading=true;
+        for(size_t i=0;i<ProjectInfo::Count;++i)
+            SetDlgItemText(PI_FIELD_FIRST+static_cast<UINT>(i),ProjectInfo::Draft()[i]);
+        ApplyEditingState();m_loading=false;return 0;
     }
     BOOL OnCommand(WPARAM wp,LPARAM lp) override
     {
         const UINT id=LOWORD(wp),code=HIWORD(wp);
-        if(!m_loading && ProjectInfo::editing && code==EN_CHANGE && id>=PI_FIELD_FIRST && id<=PI_FIELD_LAST)
+        if(!m_loading && ProjectInfo::Editing() && code==EN_CHANGE && id>=PI_FIELD_FIRST && id<=PI_FIELD_LAST)
         {
-            GetDlgItemText(id,ProjectInfo::draft[id-PI_FIELD_FIRST]);
+            GetDlgItemText(id,ProjectInfo::Draft()[id-PI_FIELD_FIRST]);
             SetDlgItemText(PI_NOTICE,L"Unsaved changes. Click Save to register project information.");
             return TRUE;
         }
         if(code==BN_CLICKED && id==PI_SAVE)
         {
-            if(!ProjectInfo::editing)
+            if(!ProjectInfo::Editing())
             {
-                ProjectInfo::editing=true;
+                ProjectInfo::Editing()=true;
                 ApplyEditingState();
                 return TRUE;
             }
             try
             {
                 for(size_t i=0;i<ProjectInfo::Count;++i)
-                    GetDlgItemText(PI_FIELD_FIRST+static_cast<UINT>(i),ProjectInfo::draft[i]);
+                    GetDlgItemText(PI_FIELD_FIRST+static_cast<UINT>(i),ProjectInfo::Draft()[i]);
                 ProjectInfo::RegisterProjectInformation();
                 ApplyEditingState();
             }

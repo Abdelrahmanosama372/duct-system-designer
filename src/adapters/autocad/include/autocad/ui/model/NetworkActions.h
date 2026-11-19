@@ -3,9 +3,13 @@
 #include "application/duct_annotations.hpp"
 #include <string>
 #include <vector>
+#include <functional>
 
 inline constexpr UINT WM_DSD_NETWORK_UPDATED = WM_APP + 84;
 namespace NetworkActions {
+using DrawingChangeHandler = void (*)(const std::function<void()>&);
+void SetDrawingChangeHandler(DrawingChangeHandler handler);
+void CommitDrawingChange(const std::function<void()>& change);
 enum class Action {
     PickRoot,
     PickAirTerminal,
